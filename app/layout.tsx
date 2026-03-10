@@ -9,7 +9,7 @@ const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const _geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
-  title: 'DevDash - Developer Analytics Dashboard',
+  title: 'CodeOrbit - Developer Analytics Dashboard',
   description: 'Aggregate and analyze your competitive programming stats across LeetCode, Codeforces, CodeChef, GeeksforGeeks, and GitHub in one premium dashboard.',
   generator: 'v0.app',
   icons: {

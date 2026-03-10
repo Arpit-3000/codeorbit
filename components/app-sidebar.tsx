@@ -54,7 +54,7 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
         </div>
         {!collapsed && (
           <span className="text-lg font-bold tracking-tight text-foreground animate-slide-in-left">
-            DevDash
+            CodeOrbit
           </span>
         )}
       </div>
