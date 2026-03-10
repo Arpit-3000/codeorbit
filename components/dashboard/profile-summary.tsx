@@ -1,19 +1,33 @@
 "use client"
 
 import { RefreshCw, ExternalLink, CheckCircle2 } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { useAuth } from "@/contexts/auth-context"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
-const connectedPlatforms = [
-  { name: "LeetCode", connected: true, color: "text-warning" },
-  { name: "Codeforces", connected: true, color: "text-chart-1" },
-  { name: "CodeChef", connected: true, color: "text-chart-5" },
-  { name: "GFG", connected: false, color: "text-success" },
-  { name: "GitHub", connected: true, color: "text-foreground" },
-]
-
 export function ProfileSummaryCard() {
+  const { user, refreshUser } = useAuth()
+
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    }
+    return email.slice(0, 2).toUpperCase()
+  }
+
+  const getConnectedPlatforms = () => {
+    const platforms = [
+      { name: "LeetCode", connected: !!user?.platforms?.leetcode, color: "text-warning" },
+      { name: "Codeforces", connected: !!user?.platforms?.codeforces, color: "text-chart-1" },
+      { name: "GitHub", connected: !!user?.platforms?.github, color: "text-foreground" },
+    ]
+    return platforms
+  }
+
+  const handleRefresh = async () => {
+    await refreshUser()
+  }
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       {/* Subtle gradient overlay */}
@@ -21,20 +35,25 @@ export function ProfileSummaryCard() {
 
       <div className="relative flex items-start gap-5">
         <Avatar className="size-16 border-2 border-primary/20">
+          <AvatarImage src={user?.photoURL || ""} alt="User avatar" />
           <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary/10 text-lg font-bold text-primary">
-            DV
+            {user ? getInitials(user.displayName, user.email) : 'U'}
           </AvatarFallback>
         </Avatar>
 
         <div className="flex-1 space-y-3">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">dev_coder42</h3>
-            <p className="text-sm text-muted-foreground">Full-Stack Developer</p>
+            <h3 className="text-lg font-semibold text-foreground">
+              {user?.displayName || user?.email?.split('@')[0] || 'User'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {user?.email}
+            </p>
           </div>
 
           {/* Connected platforms */}
           <div className="flex flex-wrap gap-2">
-            {connectedPlatforms.map((p) => (
+            {getConnectedPlatforms().map((p) => (
               <Badge
                 key={p.name}
                 variant={p.connected ? "secondary" : "outline"}
@@ -48,9 +67,14 @@ export function ProfileSummaryCard() {
 
           <div className="flex items-center gap-4 pt-1">
             <span className="text-xs text-muted-foreground">
-              Last synced: 2 min ago
+              Provider: {user?.provider || 'Unknown'}
             </span>
-            <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary">
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={handleRefresh}
+            >
               <RefreshCw className="size-3" />
               Sync Now
             </Button>

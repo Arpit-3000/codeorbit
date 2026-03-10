@@ -1,7 +1,8 @@
 "use client"
 
-import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor } from "lucide-react"
+import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor, User, Settings, LogOut } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,6 +19,14 @@ interface TopNavbarProps {
 
 export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
   const { theme, setTheme } = useTheme()
+  const { user, logout } = useAuth()
+
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    }
+    return email.slice(0, 2).toUpperCase()
+  }
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-xl">
@@ -90,19 +99,38 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent">
               <Avatar className="size-8">
-                <AvatarImage src="" alt="User avatar" />
+                <AvatarImage src={user?.photoURL || ""} alt="User avatar" />
                 <AvatarFallback className="bg-primary/20 text-xs text-primary font-semibold">
-                  DV
+                  {user ? getInitials(user.displayName, user.email) : 'U'}
                 </AvatarFallback>
               </Avatar>
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-card border-border">
-            <DropdownMenuItem className="text-foreground focus:bg-accent">Profile</DropdownMenuItem>
-            <DropdownMenuItem className="text-foreground focus:bg-accent">Settings</DropdownMenuItem>
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">
+              <div className="font-medium text-foreground">
+                {user?.displayName || 'User'}
+              </div>
+              <div className="text-xs">{user?.email}</div>
+            </div>
             <DropdownMenuSeparator className="bg-border" />
-            <DropdownMenuItem className="text-destructive focus:bg-accent">Sign out</DropdownMenuItem>
+            <DropdownMenuItem className="text-foreground focus:bg-accent gap-2">
+              <User className="size-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-foreground focus:bg-accent gap-2">
+              <Settings className="size-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuItem 
+              onClick={logout}
+              className="text-destructive focus:bg-accent gap-2"
+            >
+              <LogOut className="size-4" />
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

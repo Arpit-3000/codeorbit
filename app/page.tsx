@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppSidebar } from "@/components/app-sidebar"
 import { TopNavbar } from "@/components/top-navbar"
 import { ConnectPlatformsModal } from "@/components/connect-platforms-modal"
@@ -105,23 +106,25 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+    <AuthGuard>
+      <div className="flex min-h-screen bg-background">
+        <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopNavbar onConnectPlatforms={() => setConnectModalOpen(true)} />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopNavbar onConnectPlatforms={() => setConnectModalOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-7xl p-6 lg:p-8">
-            {renderContent()}
-          </div>
-        </main>
+          <main className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-7xl p-6 lg:p-8">
+              {renderContent()}
+            </div>
+          </main>
+        </div>
+
+        <ConnectPlatformsModal
+          open={connectModalOpen}
+          onOpenChange={setConnectModalOpen}
+        />
       </div>
-
-      <ConnectPlatformsModal
-        open={connectModalOpen}
-        onOpenChange={setConnectModalOpen}
-      />
-    </div>
+    </AuthGuard>
   )
 }
