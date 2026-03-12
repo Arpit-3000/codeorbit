@@ -2,6 +2,8 @@
 
 import { ExternalLink, TrendingUp, TrendingDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { useEffect, useState } from "react"
 
 interface PlatformCardData {
   name: string
@@ -12,64 +14,93 @@ interface PlatformCardData {
   change: number
   color: string
   bgGradient: string
+  url: string
 }
 
-const platforms: PlatformCardData[] = [
-  {
-    name: "LeetCode",
-    username: "dev_coder42",
-    solved: 847,
-    rating: 2102,
-    rank: "Knight",
-    change: 12,
-    color: "text-warning",
-    bgGradient: "from-warning/10 to-warning/5",
-  },
-  {
-    name: "Codeforces",
-    username: "dev_coder42",
-    solved: 623,
-    rating: 1856,
-    rank: "Expert",
-    change: -8,
-    color: "text-chart-1",
-    bgGradient: "from-chart-1/10 to-chart-1/5",
-  },
-  {
-    name: "CodeChef",
-    username: "dev_coder42",
-    solved: 412,
-    rating: 1943,
-    rank: "5 Star",
-    change: 24,
-    color: "text-chart-5",
-    bgGradient: "from-chart-5/10 to-chart-5/5",
-  },
-  {
-    name: "GeeksforGeeks",
-    username: "dev_coder42",
-    solved: 356,
-    rating: 1680,
-    rank: "4 Star",
-    change: 5,
-    color: "text-success",
-    bgGradient: "from-success/10 to-success/5",
-  },
-  {
-    name: "GitHub",
-    username: "dev-coder42",
-    solved: 1247,
-    rating: 0,
-    rank: "Active",
-    change: 32,
-    color: "text-foreground",
-    bgGradient: "from-foreground/5 to-foreground/[0.02]",
-  },
-]
-
 export function PlatformStatsGrid() {
+  const { user } = useAuth()
+  const [platforms, setPlatforms] = useState<PlatformCardData[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    const connectedPlatforms: PlatformCardData[] = []
+
+    // LeetCode
+    if (user.platforms?.leetcode?.username && user.platforms?.leetcode?.verified) {
+      connectedPlatforms.push({
+        name: "LeetCode",
+        username: user.platforms.leetcode.username,
+        solved: user.platforms.leetcode.totalSolved || 0,
+        rating: user.platforms.leetcode.contestRating || 0,
+        rank: user.platforms.leetcode.contestRating > 2000 ? "Knight" : "Guardian",
+        change: 0,
+        color: "text-warning",
+        bgGradient: "from-warning/10 to-warning/5",
+        url: `https://leetcode.com/${user.platforms.leetcode.username}`
+      })
+    }
+
+    // Codeforces
+    if (user.platforms?.codeforces?.handle) {
+      connectedPlatforms.push({
+        name: "Codeforces",
+        username: user.platforms.codeforces.handle,
+        solved: user.platforms.codeforces.solvedProblems || 0,
+        rating: user.platforms.codeforces.rating || 0,
+        rank: user.platforms.codeforces.rank || "Newbie",
+        change: 0,
+        color: "text-chart-1",
+        bgGradient: "from-chart-1/10 to-chart-1/5",
+        url: `https://codeforces.com/profile/${user.platforms.codeforces.handle}`
+      })
+    }
+
+    // GitHub
+    if (user.platforms?.github?.username) {
+      connectedPlatforms.push({
+        name: "GitHub",
+        username: user.platforms.github.username,
+        solved: user.platforms.github.totalContributions || 0,
+        rating: 0,
+        rank: "Active",
+        change: 0,
+        color: "text-foreground",
+        bgGradient: "from-foreground/5 to-foreground/[0.02]",
+        url: `https://github.com/${user.platforms.github.username}`
+      })
+    }
+
+    setPlatforms(connectedPlatforms)
+    setLoading(false)
+  }, [user])
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-40 rounded-xl border border-border bg-card animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (platforms.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          No platforms connected yet. Click "Connect Platforms" to get started.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {platforms.map((platform, i) => (
         <div
           key={platform.name}
@@ -90,21 +121,28 @@ export function PlatformStatsGrid() {
                   <p className="text-[11px] text-muted-foreground">@{platform.username}</p>
                 </div>
               </div>
-              <button className="rounded-md p-1 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:bg-accent">
+              <a 
+                href={platform.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="rounded-md p-1 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:bg-accent"
+              >
                 <ExternalLink className="size-3.5" />
-              </button>
+              </a>
             </div>
 
             {/* Stats */}
             <div className="space-y-2">
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-bold tracking-tight text-foreground">
-                  {platform.name === "GitHub" ? `${platform.solved}` : platform.solved}
+                  {platform.solved}
                 </span>
-                <div className={cn("flex items-center gap-0.5 text-xs font-medium", platform.change >= 0 ? "text-success" : "text-destructive")}>
-                  {platform.change >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                  {Math.abs(platform.change)}
-                </div>
+                {platform.change !== 0 && (
+                  <div className={cn("flex items-center gap-0.5 text-xs font-medium", platform.change >= 0 ? "text-success" : "text-destructive")}>
+                    {platform.change >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                    {Math.abs(platform.change)}
+                  </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {platform.name === "GitHub" ? "Contributions" : "Problems Solved"}

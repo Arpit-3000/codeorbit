@@ -5,9 +5,13 @@ import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { useState } from "react"
+import { syncAllPlatforms } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 export function ProfileSummaryCard() {
   const { user, refreshUser } = useAuth()
+  const [syncing, setSyncing] = useState(false)
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -18,16 +22,34 @@ export function ProfileSummaryCard() {
 
   const getConnectedPlatforms = () => {
     const platforms = [
-      { name: "LeetCode", connected: !!user?.platforms?.leetcode, color: "text-warning" },
+      { name: "LeetCode", connected: !!user?.platforms?.leetcode?.verified, color: "text-warning" },
       { name: "Codeforces", connected: !!user?.platforms?.codeforces, color: "text-chart-1" },
       { name: "GitHub", connected: !!user?.platforms?.github, color: "text-foreground" },
     ]
     return platforms
   }
 
-  const handleRefresh = async () => {
-    await refreshUser()
+  const handleSync = async () => {
+    try {
+      setSyncing(true)
+      const result = await syncAllPlatforms()
+      
+      // Show success message
+      console.log("Sync result:", result)
+      
+      // Refresh user data
+      await refreshUser()
+      
+      // Force page reload to update all components
+      window.location.reload()
+    } catch (error: any) {
+      console.error("Sync failed:", error)
+      alert(error.response?.data?.message || "Sync failed")
+    } finally {
+      setSyncing(false)
+    }
   }
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       {/* Subtle gradient overlay */}
@@ -73,10 +95,11 @@ export function ProfileSummaryCard() {
               size="sm" 
               variant="ghost" 
               className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
-              onClick={handleRefresh}
+              onClick={handleSync}
+              disabled={syncing}
             >
-              <RefreshCw className="size-3" />
-              Sync Now
+              <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
             <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground">
               <ExternalLink className="size-3" />

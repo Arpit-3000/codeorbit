@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle2, Link2, Loader2, ExternalLink } from "lucide-react"
+import { CheckCircle2, Link2, Loader2, ExternalLink, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { connectLeetCode, verifyLeetCode, connectCodeforces, connectGithub } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
 
 interface Platform {
   id: string
@@ -22,82 +24,8 @@ interface Platform {
   connected: boolean
   username: string
   url: string
+  needsVerification?: boolean
 }
-
-const initialPlatforms: Platform[] = [
-  {
-    id: "leetcode",
-    name: "LeetCode",
-    description: "Track problem solving and contest ratings",
-    color: "text-warning",
-    connected: true,
-    username: "dev_coder42",
-    url: "https://leetcode.com",
-  },
-  {
-    id: "codeforces",
-    name: "Codeforces",
-    description: "Competitive programming ratings and submissions",
-    color: "text-chart-1",
-    connected: true,
-    username: "dev_coder42",
-    url: "https://codeforces.com",
-  },
-  {
-    id: "codechef",
-    name: "CodeChef",
-    description: "Contest performance and problem solving stats",
-    color: "text-chart-5",
-    connected: true,
-    username: "dev_coder42",
-    url: "https://codechef.com",
-  },
-  {
-    id: "gfg",
-    name: "GeeksforGeeks",
-    description: "DSA practice and coding score tracking",
-    color: "text-success",
-    connected: false,
-    username: "",
-    url: "https://geeksforgeeks.org",
-  },
-  {
-    id: "github",
-    name: "GitHub",
-    description: "Contributions, repos, and open source activity",
-    color: "text-foreground",
-    connected: true,
-    username: "dev-coder42",
-    url: "https://github.com",
-  },
-  {
-    id: "hackerrank",
-    name: "HackerRank",
-    description: "Badges, certifications, and challenge scores",
-    color: "text-success",
-    connected: false,
-    username: "",
-    url: "https://hackerrank.com",
-  },
-  {
-    id: "hackerearth",
-    name: "HackerEarth",
-    description: "Competitive programming and hackathon stats",
-    color: "text-chart-1",
-    connected: false,
-    username: "",
-    url: "https://hackerearth.com",
-  },
-  {
-    id: "atcoder",
-    name: "AtCoder",
-    description: "Japanese competitive programming platform",
-    color: "text-chart-4",
-    connected: false,
-    username: "",
-    url: "https://atcoder.jp",
-  },
-]
 
 interface ConnectPlatformsModalProps {
   open: boolean
@@ -105,37 +33,123 @@ interface ConnectPlatformsModalProps {
 }
 
 export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsModalProps) {
-  const [platforms, setPlatforms] = useState(initialPlatforms)
+  const { user, refreshUser } = useAuth()
+  const [platforms, setPlatforms] = useState<Platform[]>([])
   const [connectingId, setConnectingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [usernameInput, setUsernameInput] = useState("")
+  const [verificationCode, setVerificationCode] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleConnect = (id: string) => {
+  useEffect(() => {
+    // Initialize platforms from user data
+    const initialPlatforms: Platform[] = [
+      {
+        id: "leetcode",
+        name: "LeetCode",
+        description: "Track problem solving and contest ratings",
+        color: "text-warning",
+        connected: !!user?.platforms?.leetcode?.username,
+        username: user?.platforms?.leetcode?.username || "",
+        url: "https://leetcode.com",
+        needsVerification: user?.platforms?.leetcode?.username && !user?.platforms?.leetcode?.verified,
+      },
+      {
+        id: "codeforces",
+        name: "Codeforces",
+        description: "Competitive programming ratings and submissions",
+        color: "text-chart-1",
+        connected: !!user?.platforms?.codeforces?.handle,
+        username: user?.platforms?.codeforces?.handle || "",
+        url: "https://codeforces.com",
+      },
+      {
+        id: "github",
+        name: "GitHub",
+        description: "Contributions, repos, and open source activity",
+        color: "text-foreground",
+        connected: !!user?.platforms?.github?.username,
+        username: user?.platforms?.github?.username || "",
+        url: "https://github.com",
+      },
+    ]
+    setPlatforms(initialPlatforms)
+  }, [user])
+
+  const handleConnect = async (id: string) => {
     if (!usernameInput.trim()) return
+    
     setConnectingId(id)
+    setError(null)
 
-    // Simulate connection
-    setTimeout(() => {
-      setPlatforms((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, connected: true, username: usernameInput } : p
+    try {
+      if (id === "leetcode") {
+        const response = await connectLeetCode(usernameInput)
+        setVerificationCode(response.verificationCode)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: usernameInput, needsVerification: true } : p
+          )
         )
-      )
-      setConnectingId(null)
+      } else if (id === "codeforces") {
+        await connectCodeforces(usernameInput)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: usernameInput } : p
+          )
+        )
+        await refreshUser()
+      } else if (id === "github") {
+        await connectGithub(usernameInput)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: usernameInput } : p
+          )
+        )
+        await refreshUser()
+      }
+      
       setEditingId(null)
       setUsernameInput("")
-    }, 1500)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to connect platform")
+    } finally {
+      setConnectingId(null)
+    }
+  }
+
+  const handleVerifyLeetCode = async () => {
+    setConnectingId("leetcode")
+    setError(null)
+
+    try {
+      await verifyLeetCode()
+      setPlatforms((prev) =>
+        prev.map((p) =>
+          p.id === "leetcode" ? { ...p, needsVerification: false } : p
+        )
+      )
+      setVerificationCode(null)
+      await refreshUser()
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Verification failed")
+    } finally {
+      setConnectingId(null)
+    }
   }
 
   const handleDisconnect = (id: string) => {
     setPlatforms((prev) =>
       prev.map((p) =>
-        p.id === id ? { ...p, connected: false, username: "" } : p
+        p.id === id ? { ...p, connected: false, username: "", needsVerification: false } : p
       )
     )
+    if (id === "leetcode") {
+      setVerificationCode(null)
+    }
   }
 
-  const connectedCount = platforms.filter((p) => p.connected).length
+  const connectedCount = platforms.filter((p) => p.connected && !p.needsVerification).length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -152,14 +166,59 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
           </DialogDescription>
         </DialogHeader>
 
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="size-4" />
+            {error}
+          </div>
+        )}
+
+        {verificationCode && (
+          <div className="rounded-lg bg-primary/10 p-4 space-y-2">
+            <p className="text-sm font-medium text-foreground">LeetCode Verification Required</p>
+            <p className="text-xs text-muted-foreground">
+              Add this code to your LeetCode profile's "About Me" section:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded bg-secondary px-3 py-2 font-mono text-sm text-foreground">
+                {verificationCode}
+              </code>
+              <Button
+                size="sm"
+                onClick={() => navigator.clipboard.writeText(verificationCode)}
+                variant="outline"
+              >
+                Copy
+              </Button>
+            </div>
+            <Button
+              size="sm"
+              className="w-full mt-2"
+              onClick={handleVerifyLeetCode}
+              disabled={connectingId === "leetcode"}
+            >
+              {connectingId === "leetcode" ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify Now"
+              )}
+            </Button>
+          </div>
+        )}
+
         <div className="mt-2 max-h-[420px] space-y-2 overflow-y-auto pr-1">
           {platforms.map((platform) => (
             <div
               key={platform.id}
               className={cn(
                 "flex items-center justify-between rounded-lg border p-4 transition-all duration-200",
-                platform.connected
+                platform.connected && !platform.needsVerification
                   ? "border-primary/20 bg-primary/5"
+                  : platform.needsVerification
+                  ? "border-warning/20 bg-warning/5"
                   : "border-border bg-secondary/30 hover:border-border hover:bg-secondary/50"
               )}
             >
@@ -170,10 +229,16 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-semibold text-foreground">{platform.name}</h4>
-                    {platform.connected && (
+                    {platform.connected && !platform.needsVerification && (
                       <Badge variant="secondary" className="gap-1 bg-primary/10 text-primary text-[10px] px-1.5 py-0 border-0">
                         <CheckCircle2 className="size-2.5" />
                         Connected
+                      </Badge>
+                    )}
+                    {platform.needsVerification && (
+                      <Badge variant="secondary" className="gap-1 bg-warning/10 text-warning text-[10px] px-1.5 py-0 border-0">
+                        <AlertCircle className="size-2.5" />
+                        Verify
                       </Badge>
                     )}
                   </div>
@@ -193,7 +258,7 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
                       className="h-8 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       asChild
                     >
-                      <a href={platform.url} target="_blank" rel="noopener noreferrer">
+                      <a href={`${platform.url}/${platform.username}`} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="size-3.5" />
                       </a>
                     </Button>
@@ -238,6 +303,7 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
                     onClick={() => {
                       setEditingId(platform.id)
                       setUsernameInput("")
+                      setError(null)
                     }}
                   >
                     <Link2 className="size-3" />

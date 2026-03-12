@@ -1,32 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-
-function generateHeatmapData() {
-  const data: { date: string; count: number }[] = []
-  const today = new Date()
-  for (let i = 364; i >= 0; i--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
-    const dayOfWeek = date.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-
-    // Generate realistic activity patterns
-    let count = 0
-    const rand = Math.random()
-    if (rand > 0.3) {
-      count = isWeekend
-        ? Math.floor(Math.random() * 8) + 1
-        : Math.floor(Math.random() * 12) + 1
-    }
-    data.push({
-      date: date.toISOString().split("T")[0],
-      count,
-    })
-  }
-  return data
-}
+import { getHeatmap } from "@/lib/api"
 
 function getColor(count: number) {
   if (count === 0) return "bg-secondary/50"
@@ -37,31 +13,90 @@ function getColor(count: number) {
 }
 
 export function ActivityHeatmap() {
-  const data = useMemo(() => generateHeatmapData(), [])
-  const totalContributions = data.reduce((a, b) => a + b.count, 0)
+  const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Group by week
-  const weeks: { date: string; count: number }[][] = []
-  let currentWeek: { date: string; count: number }[] = []
-
-  // Pad the first week
-  const firstDay = new Date(data[0].date).getDay()
-  for (let i = 0; i < firstDay; i++) {
-    currentWeek.push({ date: "", count: -1 })
-  }
-
-  for (const day of data) {
-    currentWeek.push(day)
-    if (currentWeek.length === 7) {
-      weeks.push(currentWeek)
-      currentWeek = []
+  useEffect(() => {
+    const fetchHeatmap = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await getHeatmap()
+        setHeatmapData(data.heatmap)
+      } catch (err: any) {
+        console.error("Failed to fetch heatmap", err)
+        setError(err.response?.data?.message || "Failed to load heatmap")
+      } finally {
+        setLoading(false)
+      }
     }
-  }
-  if (currentWeek.length > 0) {
-    weeks.push(currentWeek)
-  }
+
+    fetchHeatmap()
+  }, [])
+
+  const { weeks, totalContributions } = useMemo(() => {
+    if (!heatmapData || heatmapData.length === 0) {
+      return { weeks: [], totalContributions: 0 }
+    }
+
+    const total = heatmapData.reduce((a, b) => a + b.count, 0)
+
+    // Group by week
+    const weeksArray: Array<{ date: string; count: number }>[] = []
+    let currentWeek: Array<{ date: string; count: number }> = []
+
+    // Pad the first week
+    const firstDay = new Date(heatmapData[0].date).getDay()
+    for (let i = 0; i < firstDay; i++) {
+      currentWeek.push({ date: "", count: -1 })
+    }
+
+    for (const day of heatmapData) {
+      currentWeek.push(day)
+      if (currentWeek.length === 7) {
+        weeksArray.push(currentWeek)
+        currentWeek = []
+      }
+    }
+    if (currentWeek.length > 0) {
+      weeksArray.push(currentWeek)
+    }
+
+    return { weeks: weeksArray, totalContributions: total }
+  }, [heatmapData])
 
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="h-40 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h3 className="mb-2 text-sm font-medium text-muted-foreground">Unified Activity Heatmap</h3>
+        <div className="text-sm text-destructive">Error: {error}</div>
+      </div>
+    )
+  }
+
+  if (heatmapData.length === 0 || totalContributions === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+        <h3 className="mb-2 text-sm font-medium text-muted-foreground">Unified Activity Heatmap</h3>
+        <p className="text-sm text-muted-foreground">
+          No activity data yet. Connect your platforms to see your contribution history.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">

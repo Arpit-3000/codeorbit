@@ -2,6 +2,8 @@
 
 import { Flame, Calendar, Target, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react"
+import { getDashboardStats, getPlatformComparison } from "@/lib/api"
 
 interface StatWidgetProps {
   icon: React.ElementType
@@ -31,47 +33,129 @@ function StatWidget({ icon: Icon, label, value, subtitle, color, bgColor }: Stat
 }
 
 export function StatsWidgets() {
+
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+
+    const fetchStats = async () => {
+
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await getDashboardStats()
+        setStats(data)
+
+      } catch (err: any) {
+        console.error("Failed to fetch stats", err)
+        setError(err.response?.data?.message || "Failed to load stats")
+      } finally {
+        setLoading(false)
+      }
+
+    }
+
+    fetchStats()
+
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-24 rounded-xl border border-border bg-card animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return <div className="text-sm text-destructive">Error: {error}</div>
+  }
+
+  if (!stats) {
+    return <div className="text-sm text-muted-foreground">No stats available</div>
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
       <StatWidget
         icon={Flame}
         label="Current Streak"
-        value={23}
+        value={stats.currentStreak}
         subtitle="days in a row"
         color="text-chart-5"
         bgColor="bg-chart-5/10"
       />
+
       <StatWidget
         icon={Calendar}
         label="Active Days"
-        value={248}
-        subtitle="out of 365"
+        value={stats.activeDays}
+        subtitle="last year"
         color="text-primary"
         bgColor="bg-primary/10"
       />
+
       <StatWidget
         icon={Target}
         label="Longest Streak"
-        value={47}
+        value={stats.longestStreak}
         subtitle="personal best"
         color="text-success"
         bgColor="bg-success/10"
       />
+
       <StatWidget
         icon={Zap}
         label="Consistency"
-        value="84%"
+        value={`${stats.consistency}%`}
         subtitle="last 30 days"
         color="text-warning"
         bgColor="bg-warning/10"
       />
+
     </div>
   )
 }
-
 // Consistency Score with circular progress
 export function ConsistencyScore() {
-  const score = 84
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        const stats = await getDashboardStats()
+        setData(stats)
+      } catch (err) {
+        console.error("Failed to fetch consistency data", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="h-48 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
+  const score = data?.consistency || 0
+  const activeDays = data?.activeDays || 0
+  const avgProblemsPerDay = activeDays > 0 ? Math.round((data?.activeDays || 0) / 30 * 10) / 10 : 0
+  
   const circumference = 2 * Math.PI * 45
   const offset = circumference - (score / 100) * circumference
 
@@ -113,11 +197,11 @@ export function ConsistencyScore() {
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Active days</span>
-            <span className="font-medium text-foreground">25/30</span>
+            <span className="font-medium text-foreground">{Math.min(activeDays, 30)}/30</span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Avg problems/day</span>
-            <span className="font-medium text-foreground">7.2</span>
+            <span className="text-muted-foreground">Current streak</span>
+            <span className="font-medium text-foreground">{data?.currentStreak || 0} days</span>
           </div>
         </div>
       </div>
@@ -127,12 +211,63 @@ export function ConsistencyScore() {
 
 // Platform Comparison Table
 export function PlatformComparison() {
-  const platforms = [
-    { name: "LeetCode", solved: 847, rating: 2102, activity: 92, color: "bg-warning" },
-    { name: "Codeforces", solved: 623, rating: 1856, activity: 78, color: "bg-chart-1" },
-    { name: "CodeChef", solved: 412, rating: 1943, activity: 65, color: "bg-chart-5" },
-    { name: "GFG", solved: 356, rating: 1680, activity: 54, color: "bg-success" },
-  ]
+  const [platforms, setPlatforms] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchComparison = async () => {
+      try {
+        setLoading(true)
+        const data = await getPlatformComparison()
+        
+        const platformsWithColors = data.comparison.map((p: any) => {
+          let color = "bg-primary"
+          if (p.platform === "LeetCode") color = "bg-warning"
+          else if (p.platform === "Codeforces") color = "bg-chart-1"
+          else if (p.platform === "GitHub") color = "bg-success"
+          
+          // Calculate activity percentage (normalize to 0-100)
+          const maxActivity = Math.max(...data.comparison.map((x: any) => x.activity || 0))
+          const activityPercent = maxActivity > 0 ? Math.round((p.activity / maxActivity) * 100) : 0
+          
+          return {
+            name: p.platform,
+            solved: p.solved || 0,
+            rating: p.rating || 0,
+            activity: activityPercent,
+            color
+          }
+        })
+        
+        setPlatforms(platformsWithColors)
+      } catch (err) {
+        console.error("Failed to fetch platform comparison", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchComparison()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="h-40 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (platforms.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Platform Comparison</h3>
+        <div className="text-sm text-muted-foreground">No platform data available</div>
+      </div>
+    )
+  }
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
@@ -155,7 +290,7 @@ export function PlatformComparison() {
                 <span className="text-foreground font-medium">{p.name}</span>
               </div>
               <span className="text-right font-mono text-foreground">{p.solved}</span>
-              <span className="text-right font-mono text-foreground">{p.rating}</span>
+              <span className="text-right font-mono text-foreground">{p.rating || '-'}</span>
               <div className="flex items-center justify-end gap-2">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
                   <div

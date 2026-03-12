@@ -1,31 +1,44 @@
-import axios from 'axios';
-import { signInWithPopup } from 'firebase/auth';
+import axios from "axios";
+import { signInWithPopup } from "firebase/auth";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// Create axios instance
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// Add token to requests automatically (only on client side)
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
+
   api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
+
+    const token = localStorage.getItem("token");
+
     if (token) {
+      config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
+
   });
 
-  // Handle token expiration
   api.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (error.response?.status === 401) {
-        localStorage.removeItem('token');
-        window.location.href = '/auth/login';
+
+      if (
+        error.response?.status === 401 &&
+        !error.config.url?.includes("/auth/login") &&
+        !error.config.url?.includes("/auth/signup")
+      ) {
+        localStorage.removeItem("token");
+        window.location.href = "/auth/login";
       }
+
       return Promise.reject(error);
     }
   );
@@ -36,7 +49,7 @@ export interface User {
   email: string;
   displayName: string | null;
   photoURL: string | null;
-  provider: 'local' | 'google';
+  provider: "local" | "google";
   platforms?: {
     leetcode?: any;
     codeforces?: any;
@@ -47,7 +60,7 @@ export interface User {
 export interface AuthResponse {
   message: string;
   token: string;
-  user: User;
+  user?: User;
 }
 
 // Local Authentication
@@ -128,3 +141,4 @@ export const isAuthenticated = (): boolean => {
 };
 
 export default api;
+
