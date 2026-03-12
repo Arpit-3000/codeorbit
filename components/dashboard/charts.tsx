@@ -18,17 +18,6 @@ import {
 import { useEffect, useState } from "react"
 import { getProblemStats, getWeeklyActivity, getContestRatings } from "@/lib/api"
 
-// Weekly Activity
-const weeklyActivity = [
-  { day: "Mon", problems: 12 },
-  { day: "Tue", problems: 8 },
-  { day: "Wed", problems: 15 },
-  { day: "Thu", problems: 6 },
-  { day: "Fri", problems: 18 },
-  { day: "Sat", problems: 22 },
-  { day: "Sun", problems: 14 },
-]
-
 const CustomTooltipStyle = {
   backgroundColor: "oklch(0.17 0.01 260)",
   border: "1px solid oklch(0.25 0.015 260)",
@@ -352,6 +341,59 @@ export function ContestRatingsChart() {
 }
 
 export function WeeklyActivityChart() {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const weeklyData = await getWeeklyActivity()
+        console.log("Weekly Activity - Fetched data:", weeklyData)
+        setData(weeklyData)
+      } catch (err: any) {
+        console.error("Failed to fetch weekly activity", err)
+        setError(err.message || "Failed to load data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="h-48 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Weekly Activity</h3>
+        <div className="text-sm text-destructive">Error: {error}</div>
+      </div>
+    )
+  }
+
+  if (!data || !data.weeklyTrend || data.weeklyTrend.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Weekly Activity</h3>
+        <div className="text-sm text-muted-foreground">No activity data available for the past week.</div>
+      </div>
+    )
+  }
+
+  const weeklyActivity = data.weeklyTrend
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppSidebar } from "@/components/app-sidebar"
 import { TopNavbar } from "@/components/top-navbar"
@@ -15,9 +15,11 @@ import {
 } from "@/components/dashboard/charts"
 import { ActivityHeatmap } from "@/components/dashboard/activity-heatmap"
 import { StatsWidgets, ConsistencyScore, PlatformComparison } from "@/components/dashboard/stats-widgets"
+import { BadgesShowcase } from "@/components/dashboard/badges-showcase"
 import { ContestsPage } from "@/components/pages/contests-page"
 import { ResourcesPage } from "@/components/pages/resources-page"
 import { AIInsightsPage } from "@/components/pages/ai-insights-page"
+import { ProfilePage } from "@/components/pages/profile-page"
 
 function DashboardContent() {
   return (
@@ -60,6 +62,9 @@ function DashboardContent() {
         <ConsistencyScore />
         <PlatformComparison />
       </div>
+
+      {/* Badges */}
+      <BadgesShowcase />
     </div>
   )
 }
@@ -82,12 +87,22 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [connectModalOpen, setConnectModalOpen] = useState(false)
 
+  // Listen for navigation events from search
+  useEffect(() => {
+    const handleNavigate = (event: CustomEvent) => {
+      setActiveTab(event.detail)
+    }
+
+    window.addEventListener('navigate-to-tab' as any, handleNavigate)
+    return () => window.removeEventListener('navigate-to-tab' as any, handleNavigate)
+  }, [])
+
   function renderContent() {
     switch (activeTab) {
       case "dashboard":
         return <DashboardContent />
       case "profile":
-        return <PlaceholderPage title="Profile" description="View and edit your developer profile" />
+        return <ProfilePage />
       case "analytics":
         return <PlaceholderPage title="Analytics" description="Deep dive into your coding analytics" />
       case "activity":

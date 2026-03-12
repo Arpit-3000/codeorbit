@@ -106,6 +106,24 @@ export const getContestRatings = async (): Promise<ContestRatingsData> => {
   return res.data;
 };
 
+// ==================== BADGES ====================
+
+export interface Badge {
+  name: string;
+  icon: string;
+  platform: string;
+}
+
+export interface BadgesData {
+  badges: Badge[];
+  hasBadges: boolean;
+}
+
+export const getBadges = async (): Promise<BadgesData> => {
+  const res = await api.get("/analytics/badges");
+  return res.data;
+};
+
 // ==================== LEADERBOARD ====================
 
 export interface LeaderboardUser {
@@ -172,6 +190,49 @@ export const getResources = async (): Promise<ResourcesData> => {
 };
 
 // ==================== PROFILE ====================
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  displayName: string | null;
+  photoURL: string | null;
+  provider: string;
+  lastSyncedAt: string;
+  platforms: {
+    leetcode: {
+      username: string;
+      verified: boolean;
+      totalSolved: number;
+      contestRating: number;
+      contestsPlayed: number;
+    } | null;
+    codeforces: {
+      handle: string;
+      rating: number;
+      maxRating: number;
+      rank: string;
+      solvedProblems: number;
+      contestsPlayed: number;
+    } | null;
+    github: {
+      username: string;
+      avatar: string;
+      followers: number;
+      publicRepos: number;
+      totalStars: number;
+      totalContributions: number;
+    } | null;
+  };
+  stats: {
+    activeDays: number;
+    consistencyScore: number;
+  };
+}
+
+export const getCurrentUserProfile = async (): Promise<UserProfile> => {
+  const res = await api.get("/profile/me");
+  return res.data;
+};
 
 export interface PublicProfile {
   email: string;

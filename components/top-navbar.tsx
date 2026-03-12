@@ -1,6 +1,7 @@
 "use client"
 
-import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor, User, Settings, LogOut } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor, User, Settings, LogOut, TrendingUp, Trophy, BookOpen, Activity } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,9 +18,22 @@ interface TopNavbarProps {
   onConnectPlatforms: () => void
 }
 
+interface SearchResult {
+  id: string
+  title: string
+  description: string
+  category: 'platform' | 'stat' | 'contest' | 'resource' | 'page'
+  icon: any
+  action: () => void
+}
+
 export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
   const { theme, setTheme } = useTheme()
   const { user, logout } = useAuth()
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [showResults, setShowResults] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -28,16 +42,186 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
     return email.slice(0, 2).toUpperCase()
   }
 
+  // All searchable items
+  const allItems: SearchResult[] = [
+    // Platforms
+    {
+      id: 'leetcode',
+      title: 'LeetCode',
+      description: 'View LeetCode stats and problems',
+      category: 'platform',
+      icon: TrendingUp,
+      action: () => onConnectPlatforms()
+    },
+    {
+      id: 'codeforces',
+      title: 'Codeforces',
+      description: 'View Codeforces rating and contests',
+      category: 'platform',
+      icon: TrendingUp,
+      action: () => onConnectPlatforms()
+    },
+    {
+      id: 'github',
+      title: 'GitHub',
+      description: 'View GitHub contributions and repos',
+      category: 'platform',
+      icon: TrendingUp,
+      action: () => onConnectPlatforms()
+    },
+    // Stats
+    {
+      id: 'problems-solved',
+      title: 'Problems Solved',
+      description: 'Total problems solved across platforms',
+      category: 'stat',
+      icon: Activity,
+      action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    {
+      id: 'consistency',
+      title: 'Consistency Score',
+      description: 'Your coding consistency metric',
+      category: 'stat',
+      icon: Activity,
+      action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    {
+      id: 'streak',
+      title: 'Current Streak',
+      description: 'Days of continuous coding',
+      category: 'stat',
+      icon: Activity,
+      action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    // Pages
+    {
+      id: 'contests',
+      title: 'Contests',
+      description: 'Upcoming coding contests',
+      category: 'page',
+      icon: Trophy,
+      action: () => {
+        const event = new CustomEvent('navigate-to-tab', { detail: 'contests' })
+        window.dispatchEvent(event)
+      }
+    },
+    {
+      id: 'resources',
+      title: 'Resources',
+      description: 'Learning resources and problem sets',
+      category: 'page',
+      icon: BookOpen,
+      action: () => {
+        const event = new CustomEvent('navigate-to-tab', { detail: 'resources' })
+        window.dispatchEvent(event)
+      }
+    },
+    {
+      id: 'analytics',
+      title: 'Analytics',
+      description: 'Deep dive into your coding analytics',
+      category: 'page',
+      icon: TrendingUp,
+      action: () => {
+        const event = new CustomEvent('navigate-to-tab', { detail: 'analytics' })
+        window.dispatchEvent(event)
+      }
+    }
+  ]
+
+  // Search logic
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSearchResults([])
+      setShowResults(false)
+      return
+    }
+
+    const query = searchQuery.toLowerCase()
+    const filtered = allItems.filter(item => 
+      item.title.toLowerCase().includes(query) ||
+      item.description.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query)
+    )
+
+    setSearchResults(filtered)
+    setShowResults(true)
+  }, [searchQuery])
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowResults(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleResultClick = (result: SearchResult) => {
+    result.action()
+    setSearchQuery("")
+    setShowResults(false)
+  }
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'platform': return 'text-blue-500'
+      case 'stat': return 'text-green-500'
+      case 'contest': return 'text-purple-500'
+      case 'resource': return 'text-orange-500'
+      case 'page': return 'text-cyan-500'
+      default: return 'text-muted-foreground'
+    }
+  }
+
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-xl">
       {/* Search */}
-      <div className="relative max-w-md flex-1">
+      <div ref={searchRef} className="relative max-w-md flex-1">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           placeholder="Search platforms, stats, contests..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => searchQuery && setShowResults(true)}
           className="h-9 w-full rounded-lg border border-border bg-secondary/50 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-colors"
         />
+        
+        {/* Search Results Dropdown */}
+        {showResults && searchResults.length > 0 && (
+          <div className="absolute top-full mt-2 w-full rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+            <div className="max-h-96 overflow-y-auto">
+              {searchResults.map((result) => {
+                const Icon = result.icon
+                return (
+                  <button
+                    key={result.id}
+                    onClick={() => handleResultClick(result)}
+                    className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-accent transition-colors"
+                  >
+                    <Icon className={`size-4 mt-0.5 ${getCategoryColor(result.category)}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground">{result.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">{result.description}</div>
+                    </div>
+                    <span className="text-xs text-muted-foreground capitalize">{result.category}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {showResults && searchQuery && searchResults.length === 0 && (
+          <div className="absolute top-full mt-2 w-full rounded-lg border border-border bg-card shadow-lg p-4 text-center">
+            <p className="text-sm text-muted-foreground">No results found for "{searchQuery}"</p>
+          </div>
+        )}
       </div>
 
       {/* Actions */}

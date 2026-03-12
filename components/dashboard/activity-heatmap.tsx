@@ -5,11 +5,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getHeatmap } from "@/lib/api"
 
 function getColor(count: number) {
-  if (count === 0) return "bg-secondary/50"
-  if (count <= 2) return "bg-primary/20"
-  if (count <= 5) return "bg-primary/40"
-  if (count <= 8) return "bg-primary/60"
-  return "bg-primary/90"
+  if (count === 0) return "bg-secondary/30 hover:bg-secondary/50"
+  if (count <= 2) return "bg-chart-1/30 hover:bg-chart-1/50"
+  if (count <= 5) return "bg-chart-1/50 hover:bg-chart-1/70"
+  if (count <= 8) return "bg-chart-1/70 hover:bg-chart-1/90"
+  return "bg-chart-1 hover:bg-chart-1/90"
+}
+
+function getIntensityLabel(count: number) {
+  if (count === 0) return "No activity"
+  if (count <= 2) return "Low activity"
+  if (count <= 5) return "Moderate activity"
+  if (count <= 8) return "High activity"
+  return "Very high activity"
 }
 
 export function ActivityHeatmap() {
@@ -109,56 +117,70 @@ export function ActivityHeatmap() {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="inline-flex flex-col gap-1">
-            {/* Month labels */}
-            <div className="flex gap-[3px] pl-8">
-              {weeks.map((week, wi) => {
-                if (wi % 4 === 0 && week[0]?.date) {
-                  const monthIdx = new Date(week[0].date).getMonth()
-                  return (
-                    <span
-                      key={wi}
-                      className="text-[10px] text-muted-foreground"
-                      style={{ width: `${4 * 13}px` }}
-                    >
-                      {months[monthIdx]}
-                    </span>
-                  )
-                }
-                return null
-              })}
+        <div className="overflow-x-auto pb-2">
+          <div className="inline-flex flex-col gap-3">
+            {/* Month labels row */}
+            <div className="flex">
+              {/* Empty space matching day labels width */}
+              <div className="w-16" />
+              
+              {/* Month labels - each positioned above its first week */}
+              <div className="flex gap-1.5">
+                {weeks.map((week, wi) => {
+                  if (week[0]?.date) {
+                    const currentMonth = new Date(week[0].date).getMonth()
+                    const prevMonth = wi > 0 && weeks[wi - 1][0]?.date 
+                      ? new Date(weeks[wi - 1][0].date).getMonth() 
+                      : -1
+                    
+                    // Show label if it's the first week or if month changed
+                    if (wi === 0 || currentMonth !== prevMonth) {
+                      return (
+                        <div key={wi} className="text-xs text-muted-foreground font-semibold w-3.5 flex items-center">
+                          {months[currentMonth]}
+                        </div>
+                      )
+                    }
+                  }
+                  return <div key={wi} className="w-3.5" />
+                })}
+              </div>
             </div>
 
-            <div className="flex gap-0.5">
-              {/* Day labels */}
-              <div className="flex flex-col gap-[3px] pr-2">
-                {["", "Mon", "", "Wed", "", "Fri", ""].map((d, i) => (
-                  <span key={i} className="flex h-[10px] items-center text-[9px] text-muted-foreground">
-                    {d}
-                  </span>
+            {/* Grid with day labels */}
+            <div className="flex">
+              {/* Day labels column */}
+              <div className="flex flex-col gap-1.5 w-16 pr-2">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => (
+                  <div key={i} className="flex h-3.5 items-center justify-end">
+                    <span className="text-[10px] text-muted-foreground font-medium">
+                      {d}
+                    </span>
+                  </div>
                 ))}
               </div>
 
-              {/* Grid */}
-              <div className="flex gap-[3px]">
+              {/* Heatmap grid */}
+              <div className="flex gap-1.5">
                 {weeks.map((week, wi) => (
-                  <div key={wi} className="flex flex-col gap-[3px]">
+                  <div key={wi} className="flex flex-col gap-1.5">
                     {week.map((day, di) => {
                       if (day.count === -1) {
-                        return <div key={di} className="size-[10px]" />
+                        return <div key={di} className="size-3.5" />
                       }
                       return (
                         <Tooltip key={di}>
                           <TooltipTrigger asChild>
                             <div
-                              className={`size-[10px] rounded-[2px] transition-colors ${getColor(day.count)}`}
+                              className={`size-3.5 rounded-sm transition-all cursor-pointer ring-1 ring-transparent hover:ring-primary/50 hover:scale-125 ${getColor(day.count)}`}
                             />
                           </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {day.count} submissions on {day.date}
-                            </p>
+                          <TooltipContent side="top" className="bg-popover border-border">
+                            <div className="text-xs">
+                              <p className="font-semibold">{day.count} {day.count === 1 ? 'contribution' : 'contributions'}</p>
+                              <p className="text-muted-foreground">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">{getIntensityLabel(day.count)}</p>
+                            </div>
                           </TooltipContent>
                         </Tooltip>
                       )
@@ -169,14 +191,19 @@ export function ActivityHeatmap() {
             </div>
 
             {/* Legend */}
-            <div className="mt-2 flex items-center justify-end gap-1.5">
-              <span className="text-[10px] text-muted-foreground">Less</span>
-              <div className="size-[10px] rounded-[2px] bg-secondary/50" />
-              <div className="size-[10px] rounded-[2px] bg-primary/20" />
-              <div className="size-[10px] rounded-[2px] bg-primary/40" />
-              <div className="size-[10px] rounded-[2px] bg-primary/60" />
-              <div className="size-[10px] rounded-[2px] bg-primary/90" />
-              <span className="text-[10px] text-muted-foreground">More</span>
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Less</span>
+                <div className="size-3.5 rounded-sm bg-secondary/30 border border-border/50" />
+                <div className="size-3.5 rounded-sm bg-chart-1/30 border border-border/50" />
+                <div className="size-3.5 rounded-sm bg-chart-1/50 border border-border/50" />
+                <div className="size-3.5 rounded-sm bg-chart-1/70 border border-border/50" />
+                <div className="size-3.5 rounded-sm bg-chart-1 border border-border/50" />
+                <span className="text-xs text-muted-foreground">More</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Last 12 months
+              </div>
             </div>
           </div>
         </div>
