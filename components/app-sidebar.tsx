@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import {
   LayoutDashboard,
   User,
@@ -12,7 +13,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Code2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -49,12 +49,19 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Code2 className="size-5 text-primary" />
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+          <Image
+            src="/iconLogo.png"
+            alt="CodeOrbit Logo"
+            width={36}
+            height={36}
+            className="object-contain"
+          />
         </div>
         {!collapsed && (
-          <span className="text-lg font-bold tracking-tight text-foreground animate-slide-in-left">
-            CodeOrbit
+          <span className="text-lg font-bold tracking-tight animate-slide-in-left">
+            <span className="text-primary">Code</span>
+            <span className="text-foreground">Orbit</span>
           </span>
         )}
       </div>
