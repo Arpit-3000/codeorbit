@@ -49,12 +49,12 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg overflow-hidden">
           <Image
             src="/iconLogo.png"
             alt="CodeOrbit Logo"
-            width={36}
-            height={36}
+            width={48}
+            height={48}
             className="object-contain"
           />
         </div>
