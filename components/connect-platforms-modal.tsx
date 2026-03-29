@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, Link2, Loader2, ExternalLink, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { connectLeetCode, verifyLeetCode, connectCodeforces, connectGithub } from "@/lib/api"
+import { connectLeetCode, verifyLeetCode, connectCodeforces, connectGithub, connectCodeChef, connectGFG } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 
 interface Platform {
@@ -72,6 +72,24 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
         username: user?.platforms?.github?.username || "",
         url: "https://github.com",
       },
+      {
+        id: "codechef",
+        name: "CodeChef",
+        description: "Competitive programming ratings and contests",
+        color: "text-chart-2",
+        connected: !!user?.platforms?.codechef?.username,
+        username: user?.platforms?.codechef?.username || "",
+        url: "https://www.codechef.com/users",
+      },
+      {
+        id: "gfg",
+        name: "GeeksforGeeks",
+        description: "Coding score and problem solving",
+        color: "text-chart-3",
+        connected: !!user?.platforms?.gfg?.username,
+        username: user?.platforms?.gfg?.username || "",
+        url: "https://auth.geeksforgeeks.org/user",
+      },
     ]
     setPlatforms(initialPlatforms)
   }, [user])
@@ -101,6 +119,22 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
         await refreshUser()
       } else if (id === "github") {
         await connectGithub(usernameInput)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: usernameInput } : p
+          )
+        )
+        await refreshUser()
+      } else if (id === "codechef") {
+        await connectCodeChef(usernameInput)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: usernameInput } : p
+          )
+        )
+        await refreshUser()
+      } else if (id === "gfg") {
+        await connectGFG(usernameInput)
         setPlatforms((prev) =>
           prev.map((p) =>
             p.id === id ? { ...p, connected: true, username: usernameInput } : p

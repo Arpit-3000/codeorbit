@@ -264,6 +264,68 @@ export default function ProfilePage() {
                       GitHub not connected
                     </div>
                   )}
+
+                  {profile?.platforms?.codechef ? (
+                    <div className="p-3 border rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Trophy className="h-4 w-4 text-chart-2" />
+                          <div className="font-medium">CodeChef</div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs">Connected</Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        @{profile.platforms.codechef.username}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-muted-foreground">Rating</div>
+                          <div className="font-semibold">{profile.platforms.codechef.rating}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Highest</div>
+                          <div className="font-semibold">{profile.platforms.codechef.highestRating}</div>
+                        </div>
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Stars: </span>
+                        <span className="font-semibold">{profile.platforms.codechef.stars}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      CodeChef not connected
+                    </div>
+                  )}
+
+                  {profile?.platforms?.gfg ? (
+                    <div className="p-3 border rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Code2 className="h-4 w-4 text-chart-3" />
+                          <div className="font-medium">GeeksforGeeks</div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs">Connected</Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        @{profile.platforms.gfg.username}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-muted-foreground">Score</div>
+                          <div className="font-semibold">{profile.platforms.gfg.score}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Solved</div>
+                          <div className="font-semibold">{profile.platforms.gfg.problemsSolved}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      GeeksforGeeks not connected
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

@@ -37,6 +37,26 @@ export const connectGithub = async (username: string) => {
 
 
 /* -------------------------
+   CodeChef
+--------------------------*/
+
+export const connectCodeChef = async (username: string) => {
+  const res = await api.post("/codechef/connect", { username });
+  return res.data;
+};
+
+
+/* -------------------------
+   GFG
+--------------------------*/
+
+export const connectGFG = async (username: string) => {
+  const res = await api.post("/gfg/connect", { username });
+  return res.data;
+};
+
+
+/* -------------------------
    Leaderboard
 --------------------------*/
 

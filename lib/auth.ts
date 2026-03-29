@@ -54,6 +54,8 @@ export interface User {
     leetcode?: any;
     codeforces?: any;
     github?: any;
+    codechef?: any;
+    gfg?: any;
   };
 }
 

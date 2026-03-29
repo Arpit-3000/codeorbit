@@ -222,6 +222,20 @@ export interface UserProfile {
       totalStars: number;
       totalContributions: number;
     } | null;
+    codechef: {
+      username: string;
+      rating: number;
+      highestRating: number;
+      stars: string;
+      globalRank: number;
+      countryRank: number;
+    } | null;
+    gfg: {
+      username: string;
+      score: number;
+      problemsSolved: number;
+      codingScore: number;
+    } | null;
   };
   stats: {
     activeDays: number;
@@ -289,6 +303,24 @@ export const connectGithub = async (username: string): Promise<ConnectGithubResp
   return res.data;
 };
 
+export interface ConnectCodeChefResponse {
+  message: string;
+}
+
+export const connectCodeChef = async (username: string): Promise<ConnectCodeChefResponse> => {
+  const res = await api.post("/codechef/connect", { username });
+  return res.data;
+};
+
+export interface ConnectGFGResponse {
+  message: string;
+}
+
+export const connectGFG = async (username: string): Promise<ConnectGFGResponse> => {
+  const res = await api.post("/gfg/connect", { username });
+  return res.data;
+};
+
 // ==================== SYNC ====================
 
 export interface SyncResponse {
@@ -297,6 +329,8 @@ export interface SyncResponse {
     leetcode: any;
     codeforces: any;
     github: any;
+    codechef: any;
+    gfg: any;
     activityDaysAdded: number;
   };
   totalActivityDays: number;

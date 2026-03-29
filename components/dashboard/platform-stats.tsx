@@ -75,6 +75,36 @@ export function PlatformStatsGrid() {
       })
     }
 
+    // CodeChef
+    if (user.platforms?.codechef?.username) {
+      connectedPlatforms.push({
+        name: "CodeChef",
+        username: user.platforms.codechef.username,
+        solved: user.platforms.codechef.problemsSolved || 0,
+        rating: user.platforms.codechef.rating || 0,
+        rank: user.platforms.codechef.stars || "Unrated",
+        change: 0,
+        color: "text-chart-2",
+        bgGradient: "from-chart-2/10 to-chart-2/5",
+        url: `https://www.codechef.com/users/${user.platforms.codechef.username}`
+      })
+    }
+
+    // GeeksforGeeks
+    if (user.platforms?.gfg?.username) {
+      connectedPlatforms.push({
+        name: "GeeksforGeeks",
+        username: user.platforms.gfg.username,
+        solved: user.platforms.gfg.problemsSolved || 0,
+        rating: user.platforms.gfg.codingScore || user.platforms.gfg.score || 0,
+        rank: (user.platforms.gfg.score || 0) > 1000 ? "Expert" : "Active",
+        change: 0,
+        color: "text-chart-3",
+        bgGradient: "from-chart-3/10 to-chart-3/5",
+        url: `https://auth.geeksforgeeks.org/user/${user.platforms.gfg.username}`
+      })
+    }
+
     setPlatforms(connectedPlatforms)
     setLoading(false)
   }, [user])

@@ -80,7 +80,12 @@ export function TotalProblemsSolved() {
   }
 
   const platformBreakdown = data.platformBreakdown.map((p: any) => ({
-    platform: p.platform === "LeetCode" ? "LC" : p.platform === "Codeforces" ? "CF" : p.platform === "GitHub" ? "GH" : p.platform,
+    platform: p.platform === "LeetCode" ? "LC" : 
+              p.platform === "Codeforces" ? "CF" : 
+              p.platform === "GitHub" ? "GH" : 
+              p.platform === "CodeChef" ? "CC" : 
+              p.platform === "GFG" ? "GFG" : 
+              p.platform,
     value: p.value,
     color: p.color
   }))
@@ -278,7 +283,7 @@ export function ContestRatingsChart() {
     return (
       <div className="rounded-xl border border-border bg-card p-6">
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">Contest Ratings</h3>
-        <div className="text-sm text-muted-foreground">No contest ratings available. Connect LeetCode or Codeforces to see your ratings.</div>
+        <div className="text-sm text-muted-foreground">No contest ratings available. Connect LeetCode, Codeforces, or CodeChef to see your ratings.</div>
       </div>
     )
   }
