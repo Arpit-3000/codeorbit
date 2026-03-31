@@ -20,6 +20,7 @@ import { ContestsPage } from "@/components/pages/contests-page"
 import { ResourcesPage } from "@/components/pages/resources-page"
 import { AIInsightsPage } from "@/components/pages/ai-insights-page"
 import { ProfilePage } from "@/components/pages/profile-page"
+import { ActivityPage } from "@/components/pages/activity-page"
 
 function DashboardContent() {
   return (
@@ -106,7 +107,7 @@ export default function Home() {
       case "analytics":
         return <PlaceholderPage title="Analytics" description="Deep dive into your coding analytics" />
       case "activity":
-        return <PlaceholderPage title="Activity" description="Detailed activity log across all platforms" />
+        return <ActivityPage />
       case "contests":
         return <ContestsPage />
       case "resources":

@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor, User, Settings, LogOut, TrendingUp, Trophy, BookOpen, Activity } from "lucide-react"
+import { Search, Bell, Link2, ChevronDown, Sun, Moon, Monitor, User, Settings, LogOut, TrendingUp, Trophy, BookOpen, Activity, AlertCircle, X } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/contexts/auth-context"
+import { getContests } from "@/lib/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,13 +28,90 @@ interface SearchResult {
   action: () => void
 }
 
+interface Contest {
+  _id: string
+  platform: string
+  name: string
+  startTime: string
+  duration: number
+  url: string
+}
+
 export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
   const { theme, setTheme } = useTheme()
   const { user, logout } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
+  const [todayContests, setTodayContests] = useState<Contest[]>([])
+  const [showContestAlert, setShowContestAlert] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+
+  // Fetch contests and check for today's contests
+  useEffect(() => {
+    console.log("=== NAVBAR COMPONENT LOADED ===")
+    
+    const fetchTodayContests = async () => {
+      console.log("=== STARTING CONTEST FETCH ===")
+      try {
+        console.log("Calling getContests API...")
+        const data = await getContests()
+        console.log("API Response:", data)
+        
+        const today = new Date()
+        const todayYear = today.getFullYear()
+        const todayMonth = today.getMonth()
+        const todayDate = today.getDate()
+        
+        console.log("Today's date:", today.toDateString())
+        console.log("Today details:", { year: todayYear, month: todayMonth, date: todayDate })
+        
+        const contestsToday = data.contests.filter(contest => {
+          const contestDate = new Date(contest.startTime)
+          const contestYear = contestDate.getFullYear()
+          const contestMonth = contestDate.getMonth()
+          const contestDay = contestDate.getDate()
+          
+          const isToday = (
+            contestYear === todayYear &&
+            contestMonth === todayMonth &&
+            contestDay === todayDate
+          )
+          
+          console.log(`Contest: ${contest.name}, Date: ${contestDate.toDateString()}, Is today: ${isToday}`)
+          
+          return isToday
+        })
+        
+        console.log("Contests today:", contestsToday)
+        setTodayContests(contestsToday)
+        setShowContestAlert(contestsToday.length > 0)
+        
+      } catch (error) {
+        console.error("Failed to fetch contests:", error)
+      }
+    }
+
+    fetchTodayContests()
+    // Refresh every hour to check for new contests
+    const interval = setInterval(fetchTodayContests, 60 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const getPlatformInfo = (platform: string) => {
+    const lower = platform.toLowerCase()
+    if (lower.includes('leetcode')) return { name: 'LeetCode', color: 'text-yellow-600' }
+    if (lower.includes('codeforces')) return { name: 'Codeforces', color: 'text-blue-600' }
+    if (lower.includes('codechef')) return { name: 'CodeChef', color: 'text-orange-600' }
+    if (lower.includes('atcoder')) return { name: 'AtCoder', color: 'text-green-600' }
+    if (lower.includes('gfg') || lower.includes('geeksforgeeks')) return { name: 'GeeksforGeeks', color: 'text-green-700' }
+    return { name: platform, color: 'text-gray-600' }
+  }
+
+  const navigateToContests = () => {
+    const event = new CustomEvent('navigate-to-tab', { detail: 'contests' })
+    window.dispatchEvent(event)
+  }
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -101,10 +179,7 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
       description: 'Upcoming coding contests',
       category: 'page',
       icon: Trophy,
-      action: () => {
-        const event = new CustomEvent('navigate-to-tab', { detail: 'contests' })
-        window.dispatchEvent(event)
-      }
+      action: navigateToContests
     },
     {
       id: 'resources',
@@ -179,7 +254,60 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-xl">
+    <>
+      {/* Contest Alert Banner */}
+      {showContestAlert && todayContests.length > 0 && (
+        <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border-b border-orange-200 dark:border-orange-800">
+          <div className="flex items-center justify-between px-6 py-3">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="size-5 text-orange-600 dark:text-orange-400 animate-pulse" />
+              <div>
+                <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                  🎯 {todayContests.length} Contest{todayContests.length > 1 ? 's' : ''} Today!
+                </p>
+                <div className="flex items-center gap-4 mt-1">
+                  {todayContests.slice(0, 3).map((contest, index) => {
+                    const platformInfo = getPlatformInfo(contest.platform)
+                    const startTime = new Date(contest.startTime).toLocaleTimeString('en-US', { 
+                      hour: '2-digit', 
+                      minute: '2-digit', 
+                      hour12: true 
+                    })
+                    return (
+                      <span key={contest._id} className="text-xs text-orange-700 dark:text-orange-300">
+                        <span className={platformInfo.color}>{platformInfo.name}</span> at {startTime}
+                      </span>
+                    )
+                  })}
+                  {todayContests.length > 3 && (
+                    <span className="text-xs text-orange-700 dark:text-orange-300">
+                      +{todayContests.length - 3} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={navigateToContests}
+                className="h-7 px-3 text-xs border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/20"
+              >
+                View All
+              </Button>
+              <button
+                onClick={() => setShowContestAlert(false)}
+                className="p-1 rounded-md text-orange-600 hover:bg-orange-100 dark:text-orange-400 dark:hover:bg-orange-900/20 transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-xl">
       {/* Search */}
       <div ref={searchRef} className="relative max-w-md flex-1">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -273,9 +401,11 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
         {/* Notifications */}
         <button className="relative flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
           <Bell className="size-4" />
-          <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            3
-          </span>
+          {todayContests.length > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white animate-pulse">
+              {todayContests.length}
+            </span>
+          )}
         </button>
 
         {/* User Menu */}
@@ -319,5 +449,6 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
         </DropdownMenu>
       </div>
     </header>
+    </>
   )
 }

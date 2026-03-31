@@ -5,7 +5,6 @@ import Image from "next/image"
 import {
   LayoutDashboard,
   User,
-  BarChart3,
   Activity,
   Trophy,
   BookOpen,
@@ -24,7 +23,6 @@ import {
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", id: "dashboard" },
   { icon: User, label: "Profile", id: "profile" },
-  { icon: BarChart3, label: "Analytics", id: "analytics" },
   { icon: Activity, label: "Activity", id: "activity" },
   { icon: Trophy, label: "Contests", id: "contests" },
   { icon: BookOpen, label: "Resources", id: "resources" },
