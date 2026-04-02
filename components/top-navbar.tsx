@@ -29,12 +29,12 @@ interface SearchResult {
 }
 
 interface Contest {
-  _id: string
+  _id?: string
   platform: string
   name: string
   startTime: string
   duration: number
-  url: string
+  link: string
 }
 
 export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {

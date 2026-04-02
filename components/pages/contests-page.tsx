@@ -8,12 +8,12 @@ import { useEffect, useState } from "react"
 import { getContests } from "@/lib/api"
 
 interface Contest {
-  _id: string
+  _id?: string
   platform: string
   name: string
   startTime: string
   duration: number
-  url: string
+  link: string
 }
 
 export function ContestsPage() {
@@ -293,8 +293,8 @@ export function ContestsPage() {
                     
                     return (
                       <button
-                        key={contest._id}
-                        onClick={() => window.open(contest.url, '_blank')}
+                        key={contest._id || contest.name}
+                        onClick={() => window.open(contest.link, '_blank')}
                         className="w-full text-left group"
                       >
                         <div className="flex flex-col items-center gap-1 p-2 rounded-md text-xs hover:bg-muted/50 transition-colors">

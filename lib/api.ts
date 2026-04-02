@@ -148,15 +148,71 @@ export const getLeaderboard = async (page: number = 1): Promise<LeaderboardData>
   return res.data;
 };
 
+// ==================== PROBLEMS ====================
+
+export interface Problem {
+  id: string
+  title: string
+  titleSlug?: string
+  timestamp: string
+  status?: string
+  language: string
+  runtime?: string
+  memory?: string
+  link: string
+  platform: string
+  contestId?: number
+  index?: string
+  rating?: number
+  tags?: string[]
+}
+
+export interface AllProblemsData {
+  problems: Problem[]
+  totalProblems: number
+  platformStats: {
+    leetcode: {
+      total: number
+      connected: boolean
+    }
+    codeforces: {
+      total: number
+      connected: boolean
+    }
+  }
+  message: string
+}
+
+export interface PlatformProblemsData {
+  problems: Problem[]
+  total: number
+  platform: string
+}
+
+export const getAllProblems = async (): Promise<AllProblemsData> => {
+  const res = await api.get("/problems/all")
+  return res.data
+}
+
+export const getLeetCodeProblems = async (): Promise<PlatformProblemsData> => {
+  const res = await api.get("/problems/leetcode")
+  return res.data
+}
+
+export const getCodeforcesProblems = async (): Promise<PlatformProblemsData> => {
+  const res = await api.get("/problems/codeforces")
+  return res.data
+}
+
 // ==================== CONTESTS ====================
 
 export interface Contest {
-  _id: string;
+  _id?: string;
   platform: string;
   name: string;
   startTime: string;
   duration: number;
-  url: string;
+  link: string;
 }
 
 export interface ContestsData {
@@ -320,6 +376,101 @@ export const connectGFG = async (username: string): Promise<ConnectGFGResponse> 
   const res = await api.post("/gfg/connect", { username });
   return res.data;
 };
+
+// ==================== AI RECOMMENDATIONS ====================
+
+export interface AIAnalysis {
+  dominantTopics: string[]
+  currentDifficultyLevel: string
+  solvingPattern: string
+  identifiedGaps: string[]
+}
+
+export interface AIRecommendation {
+  title: string
+  platform: string
+  difficulty: string
+  topics: string[]
+  reasoning: string
+  priority: string
+  estimatedTime: string
+  learningObjective: string
+}
+
+export interface LearningPath {
+  currentFocus: string
+  nextMilestone: string
+  suggestedStudyOrder: string[]
+}
+
+export interface AIRecommendationsData {
+  success: boolean
+  analysis: AIAnalysis
+  recommendations: AIRecommendation[]
+  learningPath: LearningPath
+  basedOnProblems: number
+  generatedAt: string
+  message: string
+}
+
+export interface TopicProblem {
+  title: string
+  description: string
+  keyConcepts: string[]
+  difficulty: string
+  estimatedTime: string
+  prerequisites: string[]
+}
+
+export interface TopicRecommendationsData {
+  success: boolean
+  topic: string
+  difficulty: string
+  platform: string
+  problems: TopicProblem[]
+  message: string
+}
+
+export interface LearningPathData {
+  success: boolean
+  learningPath: LearningPath
+  generatedAt: string
+  message: string
+}
+
+export interface DifficultyProgressionData {
+  success: boolean
+  platform: string
+  currentLevel: string
+  nextLevel: string
+  suggestions: string[]
+  message: string
+}
+
+export const getAIRecommendations = async (): Promise<AIRecommendationsData> => {
+  const res = await api.get("/recommendations/ai")
+  return res.data
+}
+
+export const getTopicRecommendations = async (
+  topic: string, 
+  difficulty: string, 
+  platform: string
+): Promise<TopicRecommendationsData> => {
+  const res = await api.get(`/recommendations/topic?topic=${topic}&difficulty=${difficulty}&platform=${platform}`)
+  return res.data
+}
+
+export const getLearningPath = async (): Promise<LearningPathData> => {
+  const res = await api.get("/recommendations/learning-path")
+  return res.data
+}
+
+export const getDifficultyProgression = async (platform?: string): Promise<DifficultyProgressionData> => {
+  const url = platform ? `/recommendations/difficulty-progression?platform=${platform}` : "/recommendations/difficulty-progression"
+  const res = await api.get(url)
+  return res.data
+}
 
 // ==================== SYNC ====================
 
