@@ -330,7 +330,7 @@ export function ContestRatingsChart() {
                 <span className="text-sm font-medium text-foreground">{platform.name}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-foreground">{platform.rating}</span>
+                <span className="text-2xl font-bold text-foreground">{Number(platform.rating).toFixed(2)}</span>
               </div>
             </div>
           ))}

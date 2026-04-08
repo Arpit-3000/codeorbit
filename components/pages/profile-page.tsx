@@ -195,7 +195,7 @@ export function ProfilePage() {
             <h3 className="mb-4 text-base font-semibold text-foreground">Connected Platforms</h3>
             <div className="space-y-3">
               {/* LeetCode */}
-              {profile.platforms.leetcode ? (
+              {profile.platforms.leetcode && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -220,14 +220,10 @@ export function ProfilePage() {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-                  LeetCode not connected
-                </div>
               )}
 
               {/* Codeforces */}
-              {profile.platforms.codeforces ? (
+              {profile.platforms.codeforces && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -248,7 +244,7 @@ export function ProfilePage() {
                     </div>
                     <div>
                       <div className="text-muted-foreground">Rating</div>
-                      <div className="font-semibold text-foreground">{profile.platforms.codeforces.rating}</div>
+                      <div className="font-semibold text-foreground">{Number(profile.platforms.codeforces.rating).toFixed(2)}</div>
                     </div>
                   </div>
                   <div className="text-xs">
@@ -256,14 +252,10 @@ export function ProfilePage() {
                     <span className="font-semibold capitalize text-foreground">{profile.platforms.codeforces.rank}</span>
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-                  Codeforces not connected
-                </div>
               )}
 
               {/* GitHub */}
-              {profile.platforms.github ? (
+              {profile.platforms.github && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -292,14 +284,10 @@ export function ProfilePage() {
                     </span>
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-                  GitHub not connected
-                </div>
               )}
 
               {/* CodeChef */}
-              {profile.platforms.codechef ? (
+              {profile.platforms.codechef && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -314,26 +302,28 @@ export function ProfilePage() {
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <div className="text-muted-foreground">Rating</div>
-                      <div className="font-semibold text-foreground">{profile.platforms.codechef.rating}</div>
+                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.rating).toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Highest</div>
-                      <div className="font-semibold text-foreground">{profile.platforms.codechef.highestRating}</div>
+                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.highestRating).toFixed(2)}</div>
                     </div>
                   </div>
-                  <div className="text-xs">
-                    <span className="text-muted-foreground">Stars: </span>
-                    <span className="font-semibold text-foreground">{profile.platforms.codechef.stars}</span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Stars</div>
+                      <div className="font-semibold text-foreground">{profile.platforms.codechef.stars}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Global Rank</div>
+                      <div className="font-semibold text-foreground">{profile.platforms.codechef.globalRank || 'N/A'}</div>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-                  CodeChef not connected
                 </div>
               )}
 
               {/* GFG */}
-              {profile.platforms.gfg ? (
+              {profile.platforms.gfg && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -356,9 +346,19 @@ export function ProfilePage() {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-                  GeeksforGeeks not connected
+              )}
+
+              {/* Show message if no platforms connected */}
+              {!profile.platforms.leetcode && 
+               !profile.platforms.codeforces && 
+               !profile.platforms.github && 
+               !profile.platforms.codechef && 
+               !profile.platforms.gfg && (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                  <div className="text-sm text-muted-foreground">No platforms connected yet</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Connect your coding platforms to see your stats here
+                  </div>
                 </div>
               )}
             </div>

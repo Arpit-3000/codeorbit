@@ -76,17 +76,17 @@ export function PlatformStatsGrid() {
     }
 
     // CodeChef
-    if (user.platforms?.codechef?.username) {
+    if (user.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating)) {
       connectedPlatforms.push({
         name: "CodeChef",
-        username: user.platforms.codechef.username,
+        username: user.platforms.codechef.username || "Unknown",
         solved: user.platforms.codechef.problemsSolved || 0,
         rating: user.platforms.codechef.rating || 0,
         rank: user.platforms.codechef.stars || "Unrated",
         change: 0,
         color: "text-chart-2",
         bgGradient: "from-chart-2/10 to-chart-2/5",
-        url: `https://www.codechef.com/users/${user.platforms.codechef.username}`
+        url: `https://www.codechef.com/users/${user.platforms.codechef.username || ""}`
       })
     }
 
@@ -184,7 +184,7 @@ export function PlatformStatsGrid() {
               <div className="flex items-center justify-between border-t border-border pt-3">
                 <span className="text-xs text-muted-foreground">Rating</span>
                 <span className={cn("text-sm font-semibold", platform.color)}>
-                  {platform.rating}
+                  {Number(platform.rating).toFixed(2)}
                 </span>
               </div>
             )}

@@ -413,31 +413,6 @@ export interface AIRecommendationsData {
   message: string
 }
 
-export interface TopicProblem {
-  title: string
-  description: string
-  keyConcepts: string[]
-  difficulty: string
-  estimatedTime: string
-  prerequisites: string[]
-}
-
-export interface TopicRecommendationsData {
-  success: boolean
-  topic: string
-  difficulty: string
-  platform: string
-  problems: TopicProblem[]
-  message: string
-}
-
-export interface LearningPathData {
-  success: boolean
-  learningPath: LearningPath
-  generatedAt: string
-  message: string
-}
-
 export interface DifficultyProgressionData {
   success: boolean
   platform: string
@@ -449,20 +424,6 @@ export interface DifficultyProgressionData {
 
 export const getAIRecommendations = async (): Promise<AIRecommendationsData> => {
   const res = await api.get("/recommendations/ai")
-  return res.data
-}
-
-export const getTopicRecommendations = async (
-  topic: string, 
-  difficulty: string, 
-  platform: string
-): Promise<TopicRecommendationsData> => {
-  const res = await api.get(`/recommendations/topic?topic=${topic}&difficulty=${difficulty}&platform=${platform}`)
-  return res.data
-}
-
-export const getLearningPath = async (): Promise<LearningPathData> => {
-  const res = await api.get("/recommendations/learning-path")
   return res.data
 }
 

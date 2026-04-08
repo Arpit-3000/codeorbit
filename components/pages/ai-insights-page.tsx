@@ -8,9 +8,6 @@ import {
   BookOpen, 
   Lightbulb, 
   Clock, 
-  Star, 
-  ArrowRight,
-  Zap,
   CheckCircle,
   AlertCircle,
   ExternalLink,
@@ -18,15 +15,12 @@ import {
 } from "lucide-react"
 import { 
   getAIRecommendations, 
-  getTopicRecommendations, 
-  getLearningPath, 
   getDifficultyProgression 
 } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface AIAnalysis {
   dominantTopics: string[]
@@ -62,31 +56,6 @@ interface AIRecommendationsData {
   message: string
 }
 
-interface TopicProblem {
-  title: string
-  description: string
-  keyConcepts: string[]
-  difficulty: string
-  estimatedTime: string
-  prerequisites: string[]
-}
-
-interface TopicRecommendationsData {
-  success: boolean
-  topic: string
-  difficulty: string
-  platform: string
-  problems: TopicProblem[]
-  message: string
-}
-
-interface LearningPathData {
-  success: boolean
-  learningPath: LearningPath
-  generatedAt: string
-  message: string
-}
-
 interface DifficultyProgressionData {
   success: boolean
   platform: string
@@ -98,17 +67,10 @@ interface DifficultyProgressionData {
 
 export function AIInsightsPage() {
   const [aiRecommendations, setAIRecommendations] = useState<AIRecommendationsData | null>(null)
-  const [topicRecommendations, setTopicRecommendations] = useState<TopicRecommendationsData | null>(null)
-  const [learningPath, setLearningPath] = useState<LearningPathData | null>(null)
   const [difficultyProgression, setDifficultyProgression] = useState<DifficultyProgressionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
-  
-  // Topic recommendation filters
-  const [selectedTopic, setSelectedTopic] = useState("graph")
-  const [selectedDifficulty, setSelectedDifficulty] = useState("medium")
-  const [selectedPlatform, setSelectedPlatform] = useState("leetcode")
 
   useEffect(() => {
     const fetchAIData = async () => {
@@ -116,19 +78,14 @@ export function AIInsightsPage() {
         setLoading(true)
         setError(null)
         
-        // Fetch all AI data in parallel
-        const [aiResponse, learningPathResponse, difficultyResponse] = await Promise.allSettled([
+        // Fetch AI data in parallel
+        const [aiResponse, difficultyResponse] = await Promise.allSettled([
           getAIRecommendations(),
-          getLearningPath(),
           getDifficultyProgression()
         ])
 
         if (aiResponse.status === 'fulfilled') {
           setAIRecommendations(aiResponse.value)
-        }
-
-        if (learningPathResponse.status === 'fulfilled') {
-          setLearningPath(learningPathResponse.value)
         }
 
         if (difficultyResponse.status === 'fulfilled') {
@@ -145,21 +102,6 @@ export function AIInsightsPage() {
 
     fetchAIData()
   }, [])
-
-  const fetchTopicRecommendations = async () => {
-    try {
-      const data = await getTopicRecommendations(selectedTopic, selectedDifficulty, selectedPlatform)
-      setTopicRecommendations(data)
-    } catch (err: any) {
-      console.error("Failed to fetch topic recommendations:", err)
-    }
-  }
-
-  useEffect(() => {
-    if (!loading) {
-      fetchTopicRecommendations()
-    }
-  }, [selectedTopic, selectedDifficulty, selectedPlatform, loading])
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
@@ -240,11 +182,9 @@ export function AIInsightsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
-          <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
-          <TabsTrigger value="topic-specific">Topic Specific</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -437,173 +377,6 @@ export function AIInsightsPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-
-        <TabsContent value="learning-path" className="space-y-4">
-          {(aiRecommendations?.learningPath || learningPath?.learningPath) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Learning Path
-                </CardTitle>
-                <CardDescription>
-                  Structured learning progression based on your current skills
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="p-4 rounded-lg bg-primary/10">
-                      <h4 className="font-semibold text-primary mb-2">Current Focus</h4>
-                      <p className="text-sm">{(aiRecommendations?.learningPath || learningPath?.learningPath)?.currentFocus}</p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-secondary">
-                      <h4 className="font-semibold mb-2">Next Milestone</h4>
-                      <p className="text-sm">{(aiRecommendations?.learningPath || learningPath?.learningPath)?.nextMilestone}</p>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-semibold mb-4">Suggested Study Order</h4>
-                    <div className="space-y-3">
-                      {(aiRecommendations?.learningPath || learningPath?.learningPath)?.suggestedStudyOrder.map((step, index) => (
-                        <div key={index} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
-                            {index + 1}
-                          </div>
-                          <span className="flex-1">{step}</span>
-                          {index < (aiRecommendations?.learningPath || learningPath?.learningPath)!.suggestedStudyOrder.length - 1 && (
-                            <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="topic-specific" className="space-y-4">
-          {/* Topic Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5" />
-                Topic-Specific Recommendations
-              </CardTitle>
-              <CardDescription>
-                Get targeted problem recommendations for specific topics and difficulty levels
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3 mb-6">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Topic</label>
-                  <Select value={selectedTopic} onValueChange={setSelectedTopic}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="graph">Graph</SelectItem>
-                      <SelectItem value="dp">Dynamic Programming</SelectItem>
-                      <SelectItem value="array">Array</SelectItem>
-                      <SelectItem value="tree">Tree</SelectItem>
-                      <SelectItem value="string">String</SelectItem>
-                      <SelectItem value="math">Math</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Difficulty</label>
-                  <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="easy">Easy</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="hard">Hard</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Platform</label>
-                  <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="leetcode">LeetCode</SelectItem>
-                      <SelectItem value="codeforces">Codeforces</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Topic Recommendations */}
-              {topicRecommendations && (
-                <div className="space-y-4">
-                  <h4 className="font-semibold">
-                    {topicRecommendations.problems.length} {selectedDifficulty} {selectedTopic} problems on {selectedPlatform}
-                  </h4>
-                  
-                  {topicRecommendations.problems.map((problem, index) => (
-                    <div key={index} className="p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold">{problem.title}</h4>
-                            <Badge variant="outline" className={getDifficultyColor(problem.difficulty)}>
-                              {problem.difficulty}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{problem.description}</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {problem.estimatedTime}
-                            </span>
-                          </div>
-                        </div>
-                        <Button size="sm" variant="outline">
-                          <ExternalLink className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground">Key Concepts:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {problem.keyConcepts.map((concept, conceptIndex) => (
-                              <Badge key={conceptIndex} variant="secondary" className="text-xs">
-                                {concept}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground">Prerequisites:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {problem.prerequisites.map((prereq, prereqIndex) => (
-                              <Badge key={prereqIndex} variant="outline" className="text-xs">
-                                {prereq}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

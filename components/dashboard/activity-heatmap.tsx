@@ -119,75 +119,67 @@ export function ActivityHeatmap() {
 
         <div className="overflow-x-auto pb-2">
           <div className="inline-flex flex-col gap-3">
-            {/* Month labels row */}
-            <div className="flex">
-              {/* Empty space matching day labels width */}
-              <div className="w-16" />
-              
-              {/* Month labels - each positioned above its first week */}
-              <div className="flex gap-1.5">
-                {weeks.map((week, wi) => {
+            {/* Month containers */}
+            <div className="flex gap-4">
+              {(() => {
+                const monthGroups: { [key: string]: Array<{ week: Array<{ date: string; count: number }>, weekIndex: number }> } = {}
+                
+                // Group weeks by month
+                weeks.forEach((week, wi) => {
                   if (week[0]?.date) {
-                    const currentMonth = new Date(week[0].date).getMonth()
-                    const prevMonth = wi > 0 && weeks[wi - 1][0]?.date 
-                      ? new Date(weeks[wi - 1][0].date).getMonth() 
-                      : -1
-                    
-                    // Show label if it's the first week or if month changed
-                    if (wi === 0 || currentMonth !== prevMonth) {
-                      return (
-                        <div key={wi} className="text-xs text-muted-foreground font-semibold w-3.5 flex items-center">
-                          {months[currentMonth]}
-                        </div>
-                      )
+                    const monthKey = `${new Date(week[0].date).getFullYear()}-${new Date(week[0].date).getMonth()}`
+                    if (!monthGroups[monthKey]) {
+                      monthGroups[monthKey] = []
                     }
+                    monthGroups[monthKey].push({ week, weekIndex: wi })
                   }
-                  return <div key={wi} className="w-3.5" />
-                })}
-              </div>
-            </div>
+                })
 
-            {/* Grid with day labels */}
-            <div className="flex">
-              {/* Day labels column */}
-              <div className="flex flex-col gap-1.5 w-16 pr-2">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => (
-                  <div key={i} className="flex h-3.5 items-center justify-end">
-                    <span className="text-[10px] text-muted-foreground font-medium">
-                      {d}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Heatmap grid */}
-              <div className="flex gap-1.5">
-                {weeks.map((week, wi) => (
-                  <div key={wi} className="flex flex-col gap-1.5">
-                    {week.map((day, di) => {
-                      if (day.count === -1) {
-                        return <div key={di} className="size-3.5" />
-                      }
-                      return (
-                        <Tooltip key={di}>
-                          <TooltipTrigger asChild>
-                            <div
-                              className={`size-3.5 rounded-sm transition-all cursor-pointer ring-1 ring-transparent hover:ring-primary/50 hover:scale-125 ${getColor(day.count)}`}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="bg-popover border-border">
-                            <div className="text-xs">
-                              <p className="font-semibold">{day.count} {day.count === 1 ? 'contribution' : 'contributions'}</p>
-                              <p className="text-muted-foreground">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">{getIntensityLabel(day.count)}</p>
+                return Object.entries(monthGroups).map(([monthKey, monthWeeks]) => {
+                  const [year, month] = monthKey.split('-')
+                  const monthName = months[parseInt(month)]
+                  
+                  return (
+                    <div key={monthKey} className="flex flex-col gap-2">
+                      {/* Month label */}
+                      <div className="text-xs text-muted-foreground font-semibold text-center">
+                        {monthName}
+                      </div>
+                      
+                      {/* Month container with border */}
+                      <div className="rounded-lg border border-border/30 bg-secondary/10 p-2">
+                        <div className="flex gap-1.5">
+                          {monthWeeks.map(({ week, weekIndex }) => (
+                            <div key={weekIndex} className="flex flex-col gap-1.5">
+                              {week.map((day, di) => {
+                                if (day.count === -1) {
+                                  return <div key={di} className="size-3.5" />
+                                }
+                                return (
+                                  <Tooltip key={di}>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className={`size-3.5 rounded-sm transition-all cursor-pointer ring-1 ring-transparent hover:ring-primary/50 hover:scale-125 ${getColor(day.count)}`}
+                                      />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="bg-popover border-border">
+                                      <div className="text-xs">
+                                        <p className="font-semibold">{day.count} {day.count === 1 ? 'contribution' : 'contributions'}</p>
+                                        <p className="text-muted-foreground">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">{getIntensityLabel(day.count)}</p>
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )
+                              })}
                             </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    })}
-                  </div>
-                ))}
-              </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
             </div>
 
             {/* Legend */}

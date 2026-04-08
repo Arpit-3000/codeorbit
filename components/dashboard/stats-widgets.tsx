@@ -4,6 +4,7 @@ import { Flame, Calendar, Target, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEffect, useState } from "react"
 import { getDashboardStats, getPlatformComparison } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
 
 interface StatWidgetProps {
   icon: React.ElementType
@@ -211,44 +212,83 @@ export function ConsistencyScore() {
 
 // Platform Comparison Table
 export function PlatformComparison() {
+  const { user } = useAuth()
   const [platforms, setPlatforms] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchComparison = async () => {
-      try {
-        setLoading(true)
-        const data = await getPlatformComparison()
-        
-        const platformsWithColors = data.comparison.map((p: any) => {
-          let color = "bg-primary"
-          if (p.platform === "LeetCode") color = "bg-warning"
-          else if (p.platform === "Codeforces") color = "bg-chart-1"
-          else if (p.platform === "GitHub") color = "bg-success"
-          
-          // Calculate activity percentage (normalize to 0-100)
-          const maxActivity = Math.max(...data.comparison.map((x: any) => x.activity || 0))
-          const activityPercent = maxActivity > 0 ? Math.round((p.activity / maxActivity) * 100) : 0
-          
-          return {
-            name: p.platform,
-            solved: p.solved || 0,
-            rating: p.rating || 0,
-            activity: activityPercent,
-            color
-          }
-        })
-        
-        setPlatforms(platformsWithColors)
-      } catch (err) {
-        console.error("Failed to fetch platform comparison", err)
-      } finally {
-        setLoading(false)
-      }
+    if (!user) {
+      setLoading(false)
+      return
     }
 
-    fetchComparison()
-  }, [])
+    const connectedPlatforms: any[] = []
+
+    // LeetCode
+    if (user.platforms?.leetcode?.username && user.platforms?.leetcode?.verified) {
+      connectedPlatforms.push({
+        name: "LeetCode",
+        solved: user.platforms.leetcode.totalSolved || 0,
+        rating: user.platforms.leetcode.contestRating || 0,
+        activity: user.platforms.leetcode.totalSolved || 0,
+        color: "bg-warning"
+      })
+    }
+
+    // Codeforces
+    if (user.platforms?.codeforces?.handle) {
+      connectedPlatforms.push({
+        name: "Codeforces",
+        solved: user.platforms.codeforces.solvedProblems || 0,
+        rating: user.platforms.codeforces.rating || 0,
+        activity: user.platforms.codeforces.solvedProblems || 0,
+        color: "bg-chart-1"
+      })
+    }
+
+    // GitHub
+    if (user.platforms?.github?.username) {
+      connectedPlatforms.push({
+        name: "GitHub",
+        solved: user.platforms.github.totalContributions || 0,
+        rating: 0,
+        activity: user.platforms.github.totalContributions || 0,
+        color: "bg-success"
+      })
+    }
+
+    // CodeChef
+    if (user.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating)) {
+      connectedPlatforms.push({
+        name: "CodeChef",
+        solved: user.platforms.codechef.problemsSolved || 0,
+        rating: user.platforms.codechef.rating || 0,
+        activity: user.platforms.codechef.problemsSolved || 0,
+        color: "bg-chart-2"
+      })
+    }
+
+    // GeeksforGeeks
+    if (user.platforms?.gfg?.username) {
+      connectedPlatforms.push({
+        name: "GFG",
+        solved: user.platforms.gfg.problemsSolved || 0,
+        rating: user.platforms.gfg.codingScore || user.platforms.gfg.score || 0,
+        activity: user.platforms.gfg.problemsSolved || 0,
+        color: "bg-chart-3"
+      })
+    }
+
+    // Calculate activity percentages
+    const maxActivity = Math.max(...connectedPlatforms.map(p => p.activity), 1)
+    const platformsWithActivity = connectedPlatforms.map(p => ({
+      ...p,
+      activity: Math.round((p.activity / maxActivity) * 100)
+    }))
+
+    setPlatforms(platformsWithActivity)
+    setLoading(false)
+  }, [user])
 
   if (loading) {
     return (
@@ -276,7 +316,7 @@ export function PlatformComparison() {
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">Platform Comparison</h3>
         <div className="space-y-3">
           {/* Header */}
-          <div className="grid grid-cols-4 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-4 gap-4 text-xs font-medium text-muted-foreground">
             <span>Platform</span>
             <span className="text-right">Solved</span>
             <span className="text-right">Rating</span>
@@ -284,13 +324,15 @@ export function PlatformComparison() {
           </div>
           {/* Rows */}
           {platforms.map((p) => (
-            <div key={p.name} className="grid grid-cols-4 items-center text-sm">
+            <div key={p.name} className="grid grid-cols-4 gap-4 items-center text-sm">
               <div className="flex items-center gap-2">
                 <div className={cn("size-2 rounded-full", p.color)} />
                 <span className="text-foreground font-medium">{p.name}</span>
               </div>
               <span className="text-right font-mono text-foreground">{p.solved}</span>
-              <span className="text-right font-mono text-foreground">{p.rating || '-'}</span>
+              <span className="text-right font-mono text-foreground">
+                {p.rating ? Number(p.rating).toFixed(2) : '-'}
+              </span>
               <div className="flex items-center justify-end gap-2">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
                   <div

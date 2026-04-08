@@ -77,7 +77,7 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
         name: "CodeChef",
         description: "Competitive programming ratings and contests",
         color: "text-chart-2",
-        connected: !!user?.platforms?.codechef?.username,
+        connected: !!(user?.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating)),
         username: user?.platforms?.codechef?.username || "",
         url: "https://www.codechef.com/users",
       },

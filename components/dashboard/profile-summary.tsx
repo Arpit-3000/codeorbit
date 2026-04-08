@@ -25,7 +25,7 @@ export function ProfileSummaryCard() {
       { name: "LeetCode", connected: !!user?.platforms?.leetcode?.verified, color: "text-warning" },
       { name: "Codeforces", connected: !!user?.platforms?.codeforces, color: "text-chart-1" },
       { name: "GitHub", connected: !!user?.platforms?.github, color: "text-foreground" },
-      { name: "CodeChef", connected: !!user?.platforms?.codechef, color: "text-chart-2" },
+      { name: "CodeChef", connected: !!(user?.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating)), color: "text-chart-2" },
       { name: "GFG", connected: !!user?.platforms?.gfg, color: "text-chart-3" },
     ]
     return platforms

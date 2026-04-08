@@ -218,7 +218,7 @@ export default function ProfilePage() {
                         </div>
                         <div>
                           <div className="text-muted-foreground">Rating</div>
-                          <div className="font-semibold">{profile.platforms.codeforces.rating}</div>
+                          <div className="font-semibold">{Number(profile.platforms.codeforces.rating).toFixed(2)}</div>
                         </div>
                       </div>
                       <div className="text-xs">
@@ -280,7 +280,7 @@ export default function ProfilePage() {
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <div className="text-muted-foreground">Rating</div>
-                          <div className="font-semibold">{profile.platforms.codechef.rating}</div>
+                          <div className="font-semibold">{Number(profile.platforms.codechef.rating).toFixed(2)}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Highest</div>
