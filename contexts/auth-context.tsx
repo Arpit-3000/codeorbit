@@ -86,6 +86,7 @@ interface AuthContextType {
   login: (user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  handleTokenExpiration: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -120,13 +121,19 @@ export function AuthProvider({
 
       setUser(userData);
 
-    } catch (error) {
+    } catch (error: any) {
 
       console.error("Failed to fetch user:", error);
 
-      localStorage.removeItem("token");
-
-      setUser(null);
+      // Check if it's a 401 error (token expired)
+      if (error.response?.status === 401) {
+        localStorage.removeItem("token");
+        setUser(null);
+        // Don't redirect here as the API interceptor will handle it
+      } else {
+        localStorage.removeItem("token");
+        setUser(null);
+      }
 
     } finally {
 
@@ -156,6 +163,23 @@ export function AuthProvider({
 
   };
 
+  const handleTokenExpiration = () => {
+    
+    setUser(null);
+    setLoading(false);
+    
+    // Clear token
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+    }
+    
+    // Redirect to login page
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth/login";
+    }
+    
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -163,7 +187,8 @@ export function AuthProvider({
         loading,
         login,
         logout,
-        refreshUser
+        refreshUser,
+        handleTokenExpiration
       }}
     >
       {children}

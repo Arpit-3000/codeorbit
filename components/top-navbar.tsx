@@ -429,7 +429,13 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
               <div className="text-xs">{user?.email}</div>
             </div>
             <DropdownMenuSeparator className="bg-border" />
-            <DropdownMenuItem className="text-foreground focus:bg-accent gap-2">
+            <DropdownMenuItem 
+              onClick={() => {
+                const event = new CustomEvent('navigate-to-tab', { detail: 'profile' })
+                window.dispatchEvent(event)
+              }}
+              className="text-foreground focus:bg-accent gap-2"
+            >
               <User className="size-4" />
               Profile
             </DropdownMenuItem>

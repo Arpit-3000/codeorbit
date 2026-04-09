@@ -103,10 +103,6 @@ export function ProfileSummaryCard() {
               <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing...' : 'Sync Now'}
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground">
-              <ExternalLink className="size-3" />
-              View Profile
-            </Button>
           </div>
         </div>
       </div>

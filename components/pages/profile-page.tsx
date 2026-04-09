@@ -4,6 +4,7 @@ import { User, Mail, Shield, Code2, Trophy, GitBranch, Activity, Calendar } from
 import { useEffect, useState } from "react"
 import { getCurrentUserProfile } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface ProfileData {
   id: string
@@ -131,9 +132,12 @@ export function ProfilePage() {
             </div>
             <div className="space-y-6">
               <div className="flex items-center gap-4">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
-                  {getInitials(profile.displayName, profile.email)}
-                </div>
+                <Avatar className="h-20 w-20 border-2 border-primary/20">
+                  <AvatarImage src={profile.photoURL || ""} alt="Profile picture" />
+                  <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary/10 text-2xl font-bold text-primary">
+                    {getInitials(profile.displayName, profile.email)}
+                  </AvatarFallback>
+                </Avatar>
                 <div className="space-y-1">
                   <h3 className="text-xl font-semibold text-foreground">
                     {profile.displayName || "No display name"}

@@ -61,31 +61,48 @@ interface AIRecommendationsData {
 export function AIInsightsPage() {
   const [aiRecommendations, setAIRecommendations] = useState<AIRecommendationsData | null>(null)
   const [learningPathData, setLearningPathData] = useState<LearningPathSuggestionsData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false) // Changed to false initially
   const [learningPathLoading, setLearningPathLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
   const [recommendLoading, setRecommendLoading] = useState(false)
 
+  // Load cached data immediately on component mount
   useEffect(() => {
-    const fetchAIData = async () => {
+    const loadCachedData = () => {
       try {
-        setLoading(true)
-        setError(null)
-        
-        // Fetch AI recommendations which includes learning path
-        const aiResponse = await getAIRecommendations()
-        setAIRecommendations(aiResponse)
+        // Try to load cached AI recommendations from localStorage
+        const cachedAIData = localStorage.getItem('ai-recommendations-cache')
+        if (cachedAIData) {
+          const parsedData = JSON.parse(cachedAIData)
+          // Check if cache is not too old (e.g., less than 1 hour)
+          const cacheTime = new Date(parsedData.cachedAt)
+          const now = new Date()
+          const hoursDiff = (now.getTime() - cacheTime.getTime()) / (1000 * 60 * 60)
+          
+          if (hoursDiff < 24) { // Cache valid for 24 hours
+            setAIRecommendations(parsedData.data)
+          }
+        }
 
-      } catch (err: any) {
-        console.error("Failed to fetch AI insights:", err)
-        setError(err.response?.data?.message || "Failed to load AI insights")
-      } finally {
-        setLoading(false)
+        // Try to load cached learning path data
+        const cachedLearningPath = localStorage.getItem('learning-path-cache')
+        if (cachedLearningPath) {
+          const parsedData = JSON.parse(cachedLearningPath)
+          const cacheTime = new Date(parsedData.cachedAt)
+          const now = new Date()
+          const hoursDiff = (now.getTime() - cacheTime.getTime()) / (1000 * 60 * 60)
+          
+          if (hoursDiff < 24) { // Cache valid for 24 hours
+            setLearningPathData(parsedData.data)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load cached data:", err)
       }
     }
 
-    fetchAIData()
+    loadCachedData()
   }, [])
 
   const fetchLearningPath = async () => {
@@ -95,6 +112,12 @@ export function AIInsightsPage() {
       
       const learningPathResponse = await getLearningPathSuggestions()
       setLearningPathData(learningPathResponse)
+      
+      // Cache the learning path data
+      localStorage.setItem('learning-path-cache', JSON.stringify({
+        data: learningPathResponse,
+        cachedAt: new Date().toISOString()
+      }))
       
     } catch (err: any) {
       console.error("Failed to fetch learning path:", err)
@@ -141,6 +164,12 @@ export function AIInsightsPage() {
       const freshRecommendations = await getAIRecommendations()
       setAIRecommendations(freshRecommendations)
       
+      // Cache the fresh data
+      localStorage.setItem('ai-recommendations-cache', JSON.stringify({
+        data: freshRecommendations,
+        cachedAt: new Date().toISOString()
+      }))
+      
       // Switch to recommendations tab to show new results
       setActiveTab("recommendations")
       
@@ -149,6 +178,30 @@ export function AIInsightsPage() {
       setError(err.response?.data?.message || "Failed to get new recommendations")
     } finally {
       setRecommendLoading(false)
+    }
+  }
+
+  // New function to refresh all data
+  const handleRefreshData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // Fetch fresh AI recommendations
+      const aiResponse = await getAIRecommendations()
+      setAIRecommendations(aiResponse)
+      
+      // Cache the fresh data
+      localStorage.setItem('ai-recommendations-cache', JSON.stringify({
+        data: aiResponse,
+        cachedAt: new Date().toISOString()
+      }))
+
+    } catch (err: any) {
+      console.error("Failed to refresh AI insights:", err)
+      setError(err.response?.data?.message || "Failed to refresh AI insights")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -182,7 +235,7 @@ export function AIInsightsPage() {
     window.open(problemUrl, '_blank', 'noopener,noreferrer')
   }
 
-  if (loading) {
+  if (loading && !aiRecommendations) {
     return (
       <div className="space-y-6">
         <div>
@@ -226,22 +279,34 @@ export function AIInsightsPage() {
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="size-5 text-primary" />
             <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
+            {loading && aiRecommendations && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+                <span>Refreshing...</span>
+              </div>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Personalized recommendations and learning insights powered by AI
+            {aiRecommendations && !loading && (
+              <span className="ml-2 text-xs opacity-60">
+                • Last updated: {formatDate(aiRecommendations.generatedAt)}
+              </span>
+            )}
           </p>
         </div>
         <Button 
-          onClick={handleRecommendMore}
-          disabled={recommendLoading}
+          onClick={handleRefreshData}
+          disabled={loading}
+          variant="outline"
           className="flex items-center gap-2"
         >
-          {recommendLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          {loading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
           ) : (
             <Sparkles className="h-4 w-4" />
           )}
-          {recommendLoading ? "Getting Recommendations..." : "Recommend More"}
+          {loading ? "Refreshing..." : "Refresh Data"}
         </Button>
       </div>
 
@@ -254,6 +319,23 @@ export function AIInsightsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
+          {/* No data state */}
+          {!aiRecommendations && !loading && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center h-64 text-center">
+                <Brain className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No AI Insights Available</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Click "Refresh Data" to generate your personalized AI insights and recommendations.
+                </p>
+                <Button onClick={handleRefreshData} className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Generate Insights
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Analysis Summary */}
           {aiRecommendations && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -402,6 +484,23 @@ export function AIInsightsPage() {
         </TabsContent>
 
         <TabsContent value="recommendations" className="space-y-4">
+          {/* No data state */}
+          {!aiRecommendations && !loading && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center h-64 text-center">
+                <Lightbulb className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Recommendations Available</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Generate AI insights first to get personalized problem recommendations.
+                </p>
+                <Button onClick={handleRefreshData} className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Generate Recommendations
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {aiRecommendations && (
             <Card>
               <CardHeader>
@@ -684,46 +783,25 @@ export function AIInsightsPage() {
                 </CardContent>
               </Card>
 
-              {/* Next Steps and Resources */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Lightbulb className="h-5 w-5" />
-                      Next Steps
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {learningPathData.learningPath.nextSteps.map((step, index) => (
-                        <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
-                          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-2"></div>
-                          <span className="text-sm">{step}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5" />
-                      Recommended Resources
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {learningPathData.learningPath.recommendedResources.map((resource, index) => (
-                        <div key={index} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-sm">{resource}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Next Steps */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lightbulb className="h-5 w-5" />
+                    Next Steps
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {learningPathData.learningPath.nextSteps.map((step, index) => (
+                      <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
+                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-2"></div>
+                        <span className="text-sm">{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Topic Distribution Analysis */}
               <Card>
