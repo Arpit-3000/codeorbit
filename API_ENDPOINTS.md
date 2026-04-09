@@ -532,7 +532,8 @@ GET /recommendations/ai
       "reasoning": "Next step in graph/tree learning path after mastering basic traversal",
       "priority": "high",
       "estimatedTime": "30-45 minutes",
-      "learningObjective": "Master BFS traversal in trees"
+      "learningObjective": "Master BFS traversal in trees",
+      "link": "https://leetcode.com/problems/binary-tree-level-order-traversal/"
     },
     {
       "title": "Number of Islands",
@@ -542,7 +543,8 @@ GET /recommendations/ai
       "reasoning": "Apply graph concepts to 2D grid problems",
       "priority": "high",
       "estimatedTime": "25-40 minutes",
-      "learningObjective": "Grid-based graph problems"
+      "learningObjective": "Grid-based graph problems",
+      "link": "https://leetcode.com/problems/number-of-islands/"
     }
   ],
   "learningPath": {
@@ -609,18 +611,78 @@ GET /recommendations/learning-path
 {
   "success": true,
   "learningPath": {
-    "currentFocus": "Graph Algorithms",
-    "nextMilestone": "Advanced Graph Algorithms",
-    "suggestedStudyOrder": [
-      "Basic Graph Traversal (DFS/BFS)",
-      "Shortest Path Algorithms",
-      "Minimum Spanning Tree",
-      "Topological Sorting",
-      "Advanced Graph Problems"
+    "currentLevel": "intermediate",
+    "totalPhases": 2,
+    "estimatedDuration": "9 weeks",
+    "phases": [
+      {
+        "phase": "Strengthen Core Skills",
+        "duration": "2-3 weeks",
+        "focus": "Deepen understanding of array and simulation",
+        "topics": ["array", "simulation", "string"],
+        "goals": [
+          "Master advanced array techniques",
+          "Solve medium problems consistently",
+          "Optimize solutions for better complexity",
+          "Learn pattern recognition"
+        ],
+        "milestones": [
+          "Solve 30+ medium problems",
+          "Achieve 80%+ success rate"
+        ]
+      },
+      {
+        "phase": "Explore New Domains",
+        "duration": "4-5 weeks",
+        "focus": "Learn advanced data structures and algorithms",
+        "topics": ["tree", "graph", "dynamic_programming", "backtracking"],
+        "goals": [
+          "Understand tree traversal algorithms",
+          "Learn basic graph algorithms (DFS/BFS)",
+          "Introduction to dynamic programming",
+          "Practice backtracking problems"
+        ],
+        "milestones": [
+          "Solve first hard problem",
+          "Understand recursion deeply"
+        ]
+      }
+    ],
+    "nextSteps": [
+      "Focus on array and simulation problems",
+      "Aim to solve 2-3 problems daily",
+      "Track progress and adjust based on performance",
+      "Review and understand solutions thoroughly"
+    ],
+    "recommendedResources": [
+      "LeetCode problem sets by topic",
+      "Algorithm visualization tools",
+      "Competitive programming books",
+      "Online algorithm courses"
     ]
   },
-  "generatedAt": "2024-01-15T10:30:00.000Z",
-  "message": "Learning path from recent analysis"
+  "userProfile": {
+    "totalSolved": 432,
+    "leetcodeRating": 0,
+    "codeforcesRating": null,
+    "platforms": ["LeetCode"],
+    "dominantTopics": ["array", "simulation", "string"]
+  },
+  "analysis": {
+    "dominantTopics": ["array", "simulation", "string", "divide_and_conquer"],
+    "currentDifficultyLevel": "intermediate",
+    "totalProblemsAnalyzed": 25,
+    "platformDistribution": ["LeetCode"],
+    "topicDistribution": [
+      {"topic": "array", "count": 8},
+      {"topic": "simulation", "count": 6},
+      {"topic": "string", "count": 4},
+      {"topic": "divide_and_conquer", "count": 3}
+    ]
+  },
+  "generatedAt": "2026-04-09T06:00:00.000Z",
+  "dataSource": "Real-time analysis of recent solved problems",
+  "message": "Learning path generated based on your recent problem-solving patterns"
 }
 ```
 

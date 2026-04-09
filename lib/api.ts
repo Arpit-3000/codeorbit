@@ -395,6 +395,7 @@ export interface AIRecommendation {
   priority: string
   estimatedTime: string
   learningObjective: string
+  link?: string // Optional direct link to the problem
 }
 
 export interface LearningPath {
@@ -422,6 +423,55 @@ export interface DifficultyProgressionData {
   message: string
 }
 
+// ==================== LEARNING PATH SUGGESTIONS ====================
+
+export interface LearningPhase {
+  phase: string
+  duration: string
+  focus: string
+  topics: string[]
+  goals: string[]
+  milestones: string[]
+}
+
+export interface DetailedLearningPath {
+  currentLevel: string
+  totalPhases: number
+  estimatedDuration: string
+  phases: LearningPhase[]
+  nextSteps: string[]
+  recommendedResources: string[]
+}
+
+export interface LearningPathUserProfile {
+  totalSolved: number
+  leetcodeRating: number
+  codeforcesRating: number | null
+  platforms: string[]
+  dominantTopics: string[]
+}
+
+export interface LearningPathAnalysis {
+  dominantTopics: string[]
+  currentDifficultyLevel: string
+  totalProblemsAnalyzed: number
+  platformDistribution: string[]
+  topicDistribution: Array<{
+    topic: string
+    count: number
+  }>
+}
+
+export interface LearningPathSuggestionsData {
+  success: boolean
+  learningPath: DetailedLearningPath
+  userProfile: LearningPathUserProfile
+  analysis: LearningPathAnalysis
+  generatedAt: string
+  dataSource: string
+  message: string
+}
+
 export const getAIRecommendations = async (): Promise<AIRecommendationsData> => {
   const res = await api.get("/recommendations/ai")
   return res.data
@@ -430,6 +480,11 @@ export const getAIRecommendations = async (): Promise<AIRecommendationsData> => 
 export const getDifficultyProgression = async (platform?: string): Promise<DifficultyProgressionData> => {
   const url = platform ? `/recommendations/difficulty-progression?platform=${platform}` : "/recommendations/difficulty-progression"
   const res = await api.get(url)
+  return res.data
+}
+
+export const getLearningPathSuggestions = async (): Promise<LearningPathSuggestionsData> => {
+  const res = await api.get("/recommendations/learning-path")
   return res.data
 }
 

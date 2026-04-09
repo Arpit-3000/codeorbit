@@ -14,8 +14,9 @@ import {
   Sparkles
 } from "lucide-react"
 import { 
-  getAIRecommendations, 
-  getDifficultyProgression 
+  getAIRecommendations,
+  getLearningPathSuggestions,
+  LearningPathSuggestionsData
 } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ interface AIRecommendation {
   priority: string
   estimatedTime: string
   learningObjective: string
+  link?: string // Optional direct link to the problem
 }
 
 interface LearningPath {
@@ -56,21 +58,14 @@ interface AIRecommendationsData {
   message: string
 }
 
-interface DifficultyProgressionData {
-  success: boolean
-  platform: string
-  currentLevel: string
-  nextLevel: string
-  suggestions: string[]
-  message: string
-}
-
 export function AIInsightsPage() {
   const [aiRecommendations, setAIRecommendations] = useState<AIRecommendationsData | null>(null)
-  const [difficultyProgression, setDifficultyProgression] = useState<DifficultyProgressionData | null>(null)
+  const [learningPathData, setLearningPathData] = useState<LearningPathSuggestionsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [learningPathLoading, setLearningPathLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
+  const [recommendLoading, setRecommendLoading] = useState(false)
 
   useEffect(() => {
     const fetchAIData = async () => {
@@ -78,19 +73,9 @@ export function AIInsightsPage() {
         setLoading(true)
         setError(null)
         
-        // Fetch AI data in parallel
-        const [aiResponse, difficultyResponse] = await Promise.allSettled([
-          getAIRecommendations(),
-          getDifficultyProgression()
-        ])
-
-        if (aiResponse.status === 'fulfilled') {
-          setAIRecommendations(aiResponse.value)
-        }
-
-        if (difficultyResponse.status === 'fulfilled') {
-          setDifficultyProgression(difficultyResponse.value)
-        }
+        // Fetch AI recommendations which includes learning path
+        const aiResponse = await getAIRecommendations()
+        setAIRecommendations(aiResponse)
 
       } catch (err: any) {
         console.error("Failed to fetch AI insights:", err)
@@ -102,6 +87,22 @@ export function AIInsightsPage() {
 
     fetchAIData()
   }, [])
+
+  const fetchLearningPath = async () => {
+    try {
+      setLearningPathLoading(true)
+      setError(null)
+      
+      const learningPathResponse = await getLearningPathSuggestions()
+      setLearningPathData(learningPathResponse)
+      
+    } catch (err: any) {
+      console.error("Failed to fetch learning path:", err)
+      setError(err.response?.data?.message || "Failed to load learning path")
+    } finally {
+      setLearningPathLoading(false)
+    }
+  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
@@ -129,6 +130,56 @@ export function AIInsightsPage() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handleRecommendMore = async () => {
+    try {
+      setRecommendLoading(true)
+      setError(null)
+      
+      // Fetch fresh AI recommendations
+      const freshRecommendations = await getAIRecommendations()
+      setAIRecommendations(freshRecommendations)
+      
+      // Switch to recommendations tab to show new results
+      setActiveTab("recommendations")
+      
+    } catch (err: any) {
+      console.error("Failed to fetch new recommendations:", err)
+      setError(err.response?.data?.message || "Failed to get new recommendations")
+    } finally {
+      setRecommendLoading(false)
+    }
+  }
+
+  const handleOpenProblem = (recommendation: AIRecommendation) => {
+    // Use direct link if provided by backend, otherwise generate URL
+    let problemUrl = recommendation.link || ""
+    
+    if (!problemUrl) {
+      // Generate problem URL based on platform and title
+      if (recommendation.platform.toLowerCase() === "leetcode") {
+        // Convert title to slug format (lowercase, replace spaces with hyphens)
+        const slug = recommendation.title
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+          .replace(/\s+/g, '-') // Replace spaces with hyphens
+          .replace(/-+/g, '-') // Replace multiple hyphens with single
+          .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+        
+        problemUrl = `https://leetcode.com/problems/${slug}/`
+      } else if (recommendation.platform.toLowerCase() === "codeforces") {
+        // For Codeforces, we'd need contest ID and problem index
+        // For now, redirect to problemset
+        problemUrl = "https://codeforces.com/problemset"
+      } else {
+        // Default to platform's main page
+        problemUrl = `https://${recommendation.platform.toLowerCase()}.com`
+      }
+    }
+    
+    // Open in new tab
+    window.open(problemUrl, '_blank', 'noopener,noreferrer')
   }
 
   if (loading) {
@@ -170,21 +221,36 @@ export function AIInsightsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles className="size-5 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles className="size-5 text-primary" />
+            <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Personalized recommendations and learning insights powered by AI
+          </p>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Personalized recommendations and learning insights powered by AI
-        </p>
+        <Button 
+          onClick={handleRecommendMore}
+          disabled={recommendLoading}
+          className="flex items-center gap-2"
+        >
+          {recommendLoading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {recommendLoading ? "Getting Recommendations..." : "Recommend More"}
+        </Button>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+          <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -289,26 +355,46 @@ export function AIInsightsPage() {
             </div>
           )}
 
-          {/* Difficulty Progression */}
-          {difficultyProgression && (
+          {/* Learning Path */}
+          {aiRecommendations && aiRecommendations.learningPath && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Difficulty Progression
+                  <BookOpen className="h-5 w-5" />
+                  Learning Path
                 </CardTitle>
                 <CardDescription>
-                  Current: {difficultyProgression.currentLevel} → Next: {difficultyProgression.nextLevel}
+                  Current Focus: {aiRecommendations.learningPath.currentFocus}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {difficultyProgression.suggestions.map((suggestion, index) => (
-                    <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
-                      <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{suggestion}</span>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-primary" />
+                      Next Milestone
+                    </h4>
+                    <p className="text-sm text-muted-foreground p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      {aiRecommendations.learningPath.nextMilestone}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-green-500" />
+                      Suggested Study Order
+                    </h4>
+                    <div className="space-y-2">
+                      {aiRecommendations.learningPath.suggestedStudyOrder.map((step, index) => (
+                        <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-medium flex-shrink-0 mt-0.5">
+                            {index + 1}
+                          </div>
+                          <span className="text-sm">{step}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -319,13 +405,31 @@ export function AIInsightsPage() {
           {aiRecommendations && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lightbulb className="h-5 w-5" />
-                  AI-Powered Recommendations
-                </CardTitle>
-                <CardDescription>
-                  Personalized problem recommendations based on your solving patterns
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Lightbulb className="h-5 w-5" />
+                      AI-Powered Recommendations
+                    </CardTitle>
+                    <CardDescription>
+                      Personalized problem recommendations based on your solving patterns
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    onClick={handleRecommendMore}
+                    disabled={recommendLoading}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    {recommendLoading ? (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
+                    {recommendLoading ? "Loading..." : "Get More"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -349,8 +453,14 @@ export function AIInsightsPage() {
                             <span>{rec.platform}</span>
                           </div>
                         </div>
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenProblem(rec)}
+                          className="flex items-center gap-1"
+                        >
                           <ExternalLink className="w-4 h-4" />
+                          Open
                         </Button>
                       </div>
                       
@@ -376,6 +486,302 @@ export function AIInsightsPage() {
                 </div>
               </CardContent>
             </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="learning-path" className="space-y-4">
+          {!learningPathData && !learningPathLoading && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Personalized Learning Path
+                </CardTitle>
+                <CardDescription>
+                  Get a detailed learning roadmap based on your problem-solving patterns
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={fetchLearningPath}
+                  className="flex items-center gap-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Generate Learning Path
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {learningPathLoading && (
+            <Card>
+              <CardContent className="flex items-center justify-center h-32">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  <span>Generating your personalized learning path...</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {learningPathData && (
+            <div className="space-y-4">
+              {/* Learning Path Overview */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Current Level</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold capitalize">{learningPathData.learningPath.currentLevel}</div>
+                    <p className="text-xs text-muted-foreground">Your skill level</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Duration</CardTitle>
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{learningPathData.learningPath.estimatedDuration}</div>
+                    <p className="text-xs text-muted-foreground">Estimated time</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Learning Phases</CardTitle>
+                    <Target className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{learningPathData.learningPath.totalPhases}</div>
+                    <p className="text-xs text-muted-foreground">Structured phases</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* User Profile Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="h-5 w-5" />
+                    Your Profile Analysis
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <h4 className="font-medium mb-2">Problem Solving Stats</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Solved:</span>
+                          <span className="font-medium">{learningPathData.userProfile.totalSolved}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">LeetCode Rating:</span>
+                          <span className="font-medium">{learningPathData.userProfile.leetcodeRating || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Codeforces Rating:</span>
+                          <span className="font-medium">{learningPathData.userProfile.codeforcesRating || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Strong Topics</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {learningPathData.userProfile.dominantTopics.map((topic, index) => (
+                          <Badge key={index} variant="secondary">
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Learning Phases */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5" />
+                    Learning Phases
+                  </CardTitle>
+                  <CardDescription>
+                    Structured approach to improve your problem-solving skills
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {learningPathData.learningPath.phases.map((phase, index) => (
+                      <div key={index} className="relative">
+                        {index < learningPathData.learningPath.phases.length - 1 && (
+                          <div className="absolute left-4 top-8 w-0.5 h-full bg-border"></div>
+                        )}
+                        <div className="flex gap-4">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-medium flex-shrink-0">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1 space-y-3">
+                            <div>
+                              <h4 className="font-semibold text-lg">{phase.phase}</h4>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {phase.duration}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Target className="w-3 h-3" />
+                                  {phase.focus}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div>
+                                <h5 className="font-medium text-sm mb-2">Topics to Focus</h5>
+                                <div className="flex flex-wrap gap-1">
+                                  {phase.topics.map((topic, topicIndex) => (
+                                    <Badge key={topicIndex} variant="outline" className="text-xs">
+                                      {topic}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <h5 className="font-medium text-sm mb-2">Goals</h5>
+                                <ul className="space-y-1">
+                                  {phase.goals.map((goal, goalIndex) => (
+                                    <li key={goalIndex} className="text-xs text-muted-foreground flex items-start gap-2">
+                                      <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
+                                      {goal}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h5 className="font-medium text-sm mb-2">Milestones</h5>
+                              <div className="space-y-1">
+                                {phase.milestones.map((milestone, milestoneIndex) => (
+                                  <div key={milestoneIndex} className="text-xs text-muted-foreground p-2 rounded bg-muted/50 flex items-center gap-2">
+                                    <Target className="w-3 h-3 text-primary flex-shrink-0" />
+                                    {milestone}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next Steps and Resources */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Lightbulb className="h-5 w-5" />
+                      Next Steps
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {learningPathData.learningPath.nextSteps.map((step, index) => (
+                        <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
+                          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-2"></div>
+                          <span className="text-sm">{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BookOpen className="h-5 w-5" />
+                      Recommended Resources
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {learningPathData.learningPath.recommendedResources.map((resource, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                          <span className="text-sm">{resource}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Topic Distribution Analysis */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Topic Distribution Analysis
+                  </CardTitle>
+                  <CardDescription>
+                    Based on {learningPathData.analysis.totalProblemsAnalyzed} problems analyzed
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {learningPathData.analysis.topicDistribution.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary">{item.topic}</Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {item.count} problems
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-primary rounded-full"
+                              style={{ 
+                                width: `${(item.count / Math.max(...learningPathData.analysis.topicDistribution.map(t => t.count))) * 100}%` 
+                              }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-muted-foreground w-8 text-right">
+                            {Math.round((item.count / learningPathData.analysis.totalProblemsAnalyzed) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Refresh Button */}
+              <div className="flex justify-center">
+                <Button 
+                  onClick={fetchLearningPath}
+                  disabled={learningPathLoading}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  {learningPathLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  {learningPathLoading ? "Generating..." : "Refresh Learning Path"}
+                </Button>
+              </div>
+            </div>
           )}
         </TabsContent>
       </Tabs>
