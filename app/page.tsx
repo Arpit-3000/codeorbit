@@ -21,6 +21,7 @@ import { ResourcesPage } from "@/components/pages/resources-page"
 import { AIInsightsPage } from "@/components/pages/ai-insights-page"
 import { ProfilePage } from "@/components/pages/profile-page"
 import { ActivityPage } from "@/components/pages/activity-page"
+import { DiscussionPage } from "@/components/pages/discussion-page"
 import { StatsModeProvider, useStatsMode } from "@/contexts/stats-mode-context"
 import { Button } from "@/components/ui/button"
 import { Code2, Trophy } from "lucide-react"
@@ -141,6 +142,8 @@ export default function Home() {
         return <ContestsPage />
       case "resources":
         return <ResourcesPage />
+      case "discuss":
+        return <DiscussionPage />
       case "ai-insights":
         return <AIInsightsPage />
       case "settings":

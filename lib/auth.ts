@@ -120,7 +120,7 @@ export const signInWithGoogle = async (): Promise<AuthResponse> => {
 // Get User Profile
 export const getUserProfile = async (): Promise<User> => {
   try {
-    const response = await api.get('/profile');
+    const response = await api.get('/auth/profile');
     console.log('User profile response:', response.data);
     return response.data.user;
   } catch (error: any) {

@@ -12,6 +12,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -26,6 +27,7 @@ const navItems = [
   { icon: Activity, label: "Activity", id: "activity" },
   { icon: Trophy, label: "Contests", id: "contests" },
   { icon: BookOpen, label: "Resources", id: "resources" },
+  { icon: MessageSquare, label: "Discuss", id: "discuss" },
   { icon: Sparkles, label: "AI Insights", id: "ai-insights" },
   { icon: Settings, label: "Settings", id: "settings" },
 ]
