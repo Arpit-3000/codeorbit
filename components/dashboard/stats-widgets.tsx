@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils"
 import { useEffect, useState } from "react"
 import { getDashboardStats, getPlatformComparison } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { useStatsMode } from "@/contexts/stats-mode-context"
+import { AnimatedNumber } from "@/components/ui/animated-number"
 
 interface StatWidgetProps {
   icon: React.ElementType
@@ -16,6 +18,14 @@ interface StatWidgetProps {
 }
 
 function StatWidget({ icon: Icon, label, value, subtitle, color, bgColor }: StatWidgetProps) {
+  // Extract numeric value for animation
+  const numericValue = typeof value === 'string' ? 
+    parseFloat(value.replace(/[^0-9.-]/g, '')) || 0 : 
+    value
+
+  // Check if value has percentage or other suffix
+  const suffix = typeof value === 'string' && value.includes('%') ? '%' : ''
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -25,7 +35,14 @@ function StatWidget({ icon: Icon, label, value, subtitle, color, bgColor }: Stat
         </div>
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
+          <p className="text-2xl font-bold tracking-tight text-foreground">
+            <AnimatedNumber 
+              value={numericValue} 
+              suffix={suffix}
+              duration={1500}
+              formatNumber={numericValue > 1000}
+            />
+          </p>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
       </div>
@@ -190,7 +207,9 @@ export function ConsistencyScore() {
               />
             </svg>
             <div className="absolute flex flex-col items-center">
-              <span className="text-2xl font-bold text-foreground">{score}%</span>
+              <span className="text-2xl font-bold text-foreground">
+                <AnimatedNumber value={score} suffix="%" duration={1500} />
+              </span>
               <span className="text-[10px] text-muted-foreground">30-day avg</span>
             </div>
           </div>
@@ -198,11 +217,15 @@ export function ConsistencyScore() {
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Active days</span>
-            <span className="font-medium text-foreground">{Math.min(activeDays, 30)}/30</span>
+            <span className="font-medium text-foreground">
+              <AnimatedNumber value={Math.min(activeDays, 30)} duration={1200} />/30
+            </span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Current streak</span>
-            <span className="font-medium text-foreground">{data?.currentStreak || 0} days</span>
+            <span className="font-medium text-foreground">
+              <AnimatedNumber value={data?.currentStreak || 0} duration={1200} /> days
+            </span>
           </div>
         </div>
       </div>
@@ -213,6 +236,7 @@ export function ConsistencyScore() {
 // Platform Comparison Table
 export function PlatformComparison() {
   const { user } = useAuth()
+  const { mode } = useStatsMode()
   const [platforms, setPlatforms] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -246,8 +270,8 @@ export function PlatformComparison() {
       })
     }
 
-    // GitHub
-    if (user.platforms?.github?.username) {
+    // GitHub - only include in Dev mode
+    if (mode === "dev" && user.platforms?.github?.username) {
       connectedPlatforms.push({
         name: "GitHub",
         solved: user.platforms.github.totalContributions || 0,
@@ -288,7 +312,7 @@ export function PlatformComparison() {
 
     setPlatforms(platformsWithActivity)
     setLoading(false)
-  }, [user])
+  }, [user, mode])
 
   if (loading) {
     return (
@@ -329,9 +353,13 @@ export function PlatformComparison() {
                 <div className={cn("size-2 rounded-full", p.color)} />
                 <span className="text-foreground font-medium">{p.name}</span>
               </div>
-              <span className="text-right font-mono text-foreground">{p.solved}</span>
               <span className="text-right font-mono text-foreground">
-                {p.rating ? Number(p.rating).toFixed(2) : '-'}
+                <AnimatedNumber value={p.solved} duration={1300} formatNumber={true} />
+              </span>
+              <span className="text-right font-mono text-foreground">
+                {p.rating ? (
+                  <AnimatedNumber value={p.rating} decimals={2} duration={1300} />
+                ) : '-'}
               </span>
               <div className="flex items-center justify-end gap-2">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">

@@ -21,16 +21,45 @@ import { ResourcesPage } from "@/components/pages/resources-page"
 import { AIInsightsPage } from "@/components/pages/ai-insights-page"
 import { ProfilePage } from "@/components/pages/profile-page"
 import { ActivityPage } from "@/components/pages/activity-page"
+import { StatsModeProvider, useStatsMode } from "@/contexts/stats-mode-context"
+import { Button } from "@/components/ui/button"
+import { Code2, Trophy } from "lucide-react"
 
 function DashboardContent() {
+  const { mode, setMode } = useStatsMode()
+
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your unified coding performance overview across all platforms
-        </p>
+      {/* Welcome Header with Toggle */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your unified coding performance overview across all platforms
+          </p>
+        </div>
+        
+        {/* Stats Mode Toggle */}
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1">
+          <Button
+            size="sm"
+            variant={mode === "dsa" ? "default" : "ghost"}
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => setMode("dsa")}
+          >
+            <Trophy className="size-3.5" />
+            DSA Stats
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "dev" ? "default" : "ghost"}
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => setMode("dev")}
+          >
+            <Code2 className="size-3.5" />
+            Dev Stats
+          </Button>
+        </div>
       </div>
 
       {/* Profile Summary */}
@@ -123,24 +152,26 @@ export default function Home() {
 
   return (
     <AuthGuard>
-      <div className="flex min-h-screen bg-background">
-        <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <StatsModeProvider>
+        <div className="flex min-h-screen bg-background">
+          <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <TopNavbar onConnectPlatforms={() => setConnectModalOpen(true)} />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <TopNavbar onConnectPlatforms={() => setConnectModalOpen(true)} />
 
-          <main className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-7xl p-6 lg:p-8">
-              {renderContent()}
-            </div>
-          </main>
+            <main className="flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-7xl p-6 lg:p-8">
+                {renderContent()}
+              </div>
+            </main>
+          </div>
+
+          <ConnectPlatformsModal
+            open={connectModalOpen}
+            onOpenChange={setConnectModalOpen}
+          />
         </div>
-
-        <ConnectPlatformsModal
-          open={connectModalOpen}
-          onOpenChange={setConnectModalOpen}
-        />
-      </div>
+      </StatsModeProvider>
     </AuthGuard>
   )
 }

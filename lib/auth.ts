@@ -50,6 +50,7 @@ export interface User {
   displayName: string | null;
   photoURL: string | null;
   provider: "local" | "google";
+  lastSyncedAt?: string | null;
   platforms?: {
     leetcode?: any;
     codeforces?: any;

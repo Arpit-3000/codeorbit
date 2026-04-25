@@ -5,13 +5,23 @@ import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { syncAllPlatforms } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 export function ProfileSummaryCard() {
   const { user, refreshUser } = useAuth()
   const [syncing, setSyncing] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
+
+  // Update current time every minute to keep "X minutes ago" accurate
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000) // Update every minute
+
+    return () => clearInterval(interval)
+  }, [])
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -20,6 +30,28 @@ export function ProfileSummaryCard() {
     return email.slice(0, 2).toUpperCase()
   }
 
+  const formatLastSyncTime = (lastSyncedAt: string | null) => {
+    if (!lastSyncedAt) return 'Never synced'
+    
+    const syncDate = new Date(lastSyncedAt)
+    const diffInMinutes = Math.floor((currentTime.getTime() - syncDate.getTime()) / (1000 * 60))
+    
+    if (diffInMinutes < 1) return 'Just now'
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`
+    
+    const diffInHours = Math.floor(diffInMinutes / 60)
+    if (diffInHours < 24) return `${diffInHours}h ago`
+    
+    const diffInDays = Math.floor(diffInHours / 24)
+    if (diffInDays < 7) return `${diffInDays}d ago`
+    
+    // For older dates, show the actual date
+    return syncDate.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: syncDate.getFullYear() !== currentTime.getFullYear() ? 'numeric' : undefined
+    })
+  }
   const getConnectedPlatforms = () => {
     const platforms = [
       { name: "LeetCode", connected: !!user?.platforms?.leetcode?.verified, color: "text-warning" },
@@ -39,7 +71,7 @@ export function ProfileSummaryCard() {
       // Show success message
       console.log("Sync result:", result)
       
-      // Refresh user data
+      // Refresh user data to get updated lastSyncedAt
       await refreshUser()
       
       // Force page reload to update all components
@@ -89,20 +121,25 @@ export function ProfileSummaryCard() {
             ))}
           </div>
 
-          <div className="flex items-center gap-4 pt-1">
+          <div className="flex items-start gap-4 pt-1">
             <span className="text-xs text-muted-foreground">
               Provider: {user?.provider || 'Unknown'}
             </span>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
-              onClick={handleSync}
-              disabled={syncing}
-            >
-              <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync Now'}
-            </Button>
+            <div className="flex flex-col items-start gap-1">
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                onClick={handleSync}
+                disabled={syncing}
+              >
+                <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </Button>
+              <span className="text-[10px] text-muted-foreground/80">
+                Last synced: {formatLastSyncTime(user?.lastSyncedAt || null)}
+              </span>
+            </div>
           </div>
         </div>
       </div>

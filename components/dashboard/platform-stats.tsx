@@ -4,6 +4,7 @@ import { ExternalLink, TrendingUp, TrendingDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { useEffect, useState } from "react"
+import { AnimatedNumber } from "@/components/ui/animated-number"
 
 interface PlatformCardData {
   name: string
@@ -165,12 +166,16 @@ export function PlatformStatsGrid() {
             <div className="space-y-2">
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-bold tracking-tight text-foreground">
-                  {platform.solved}
+                  <AnimatedNumber 
+                    value={platform.solved} 
+                    duration={1500 + (i * 200)} 
+                    formatNumber={platform.solved > 1000}
+                  />
                 </span>
                 {platform.change !== 0 && (
                   <div className={cn("flex items-center gap-0.5 text-xs font-medium", platform.change >= 0 ? "text-success" : "text-destructive")}>
                     {platform.change >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                    {Math.abs(platform.change)}
+                    <AnimatedNumber value={Math.abs(platform.change)} duration={1200} />
                   </div>
                 )}
               </div>
@@ -184,7 +189,7 @@ export function PlatformStatsGrid() {
               <div className="flex items-center justify-between border-t border-border pt-3">
                 <span className="text-xs text-muted-foreground">Rating</span>
                 <span className={cn("text-sm font-semibold", platform.color)}>
-                  {Number(platform.rating).toFixed(2)}
+                  <AnimatedNumber value={platform.rating} decimals={2} duration={1800 + (i * 150)} />
                 </span>
               </div>
             )}
