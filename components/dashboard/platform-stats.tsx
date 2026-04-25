@@ -33,12 +33,32 @@ export function PlatformStatsGrid() {
 
     // LeetCode
     if (user.platforms?.leetcode?.username && user.platforms?.leetcode?.verified) {
+      const rating = user.platforms.leetcode.contestRating || 0
+      let rank = "Unrated"
+      
+      // LeetCode ranking system based on contest rating
+      if (rating === 0) {
+        rank = "Unrated"
+      } else if (rating < 1400) {
+        rank = "Beginner"
+      } else if (rating < 1600) {
+        rank = "Intermediate"
+      } else if (rating < 1800) {
+        rank = "Advanced"
+      } else if (rating < 2000) {
+        rank = "Expert"
+      } else if (rating < 2200) {
+        rank = "Knight"
+      } else {
+        rank = "Guardian"
+      }
+      
       connectedPlatforms.push({
         name: "LeetCode",
         username: user.platforms.leetcode.username,
         solved: user.platforms.leetcode.totalSolved || 0,
-        rating: user.platforms.leetcode.contestRating || 0,
-        rank: user.platforms.leetcode.contestRating > 2000 ? "Knight" : "Guardian",
+        rating: rating,
+        rank: rank,
         change: 0,
         color: "text-warning",
         bgGradient: "from-warning/10 to-warning/5",

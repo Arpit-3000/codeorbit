@@ -82,9 +82,17 @@ export function TotalProblemsSolved() {
     )
   }
 
-  // Filter out GitHub if in DSA mode
+  // Filter platforms based on mode
   const platformBreakdown = data.platformBreakdown
-    .filter((p: any) => mode === "dev" || p.platform !== "GitHub")
+    .filter((p: any) => {
+      if (mode === "dev") {
+        // In Dev mode, show ONLY GitHub
+        return p.platform === "GitHub"
+      } else {
+        // In DSA mode, exclude GitHub
+        return p.platform !== "GitHub"
+      }
+    })
     .map((p: any) => ({
       platform: p.platform === "LeetCode" ? "LC" : 
                 p.platform === "Codeforces" ? "CF" : 
@@ -96,7 +104,7 @@ export function TotalProblemsSolved() {
       color: p.color
     }))
 
-  // Calculate total based on mode
+  // Calculate total based on filtered platforms
   const total = platformBreakdown.reduce((sum: number, p: any) => sum + p.value, 0)
 
   return (
@@ -105,7 +113,7 @@ export function TotalProblemsSolved() {
       <div className="relative">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-muted-foreground">
-            Total Problems Solved {mode === "dsa" ? "(DSA)" : "(Dev + DSA)"}
+            {mode === "dev" ? "Total Contributions" : "Total Problems Solved"}
           </h3>
         </div>
         <p className="mb-6 text-4xl font-bold tracking-tight text-foreground">
@@ -434,10 +442,35 @@ export function ContestRatingsChart() {
         {/* Rating Progression Chart */}
         {connectedPlatforms.length > 0 && (
           <div className="rounded-xl border border-border bg-secondary/30 p-4">
-            <h4 className="text-sm font-medium text-foreground mb-4 flex items-center gap-2">
-              <span>📈</span>
-              Rating Progression
-            </h4>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <span>📈</span>
+                Rating Progression
+              </h4>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#77FF77" }}>★</span> 1200
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#77DDFF" }}>★★</span> 1400
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#00CC66" }}>★★★</span> 1600
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#6666FF" }}>★★★★</span> 1800
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#FFCC00" }}>★★★★★</span> 2000
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#FF6600" }}>★★★★★★</span> 2200
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ color: "#FF0000" }}>★★★★★★★</span> 2500
+                </span>
+              </div>
+            </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
@@ -516,47 +549,6 @@ export function ContestRatingsChart() {
             </div>
           </div>
         )}
-
-        {/* Star Rating Legend - CodeChef Style */}
-        <div className="mt-6 rounded-xl border border-border bg-secondary/20 p-4">
-          <h4 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide flex items-center gap-2">
-            <span>⭐</span>
-            Rating Tiers (CodeChef Style)
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { rating: "0-1199", stars: 0, color: "#999999", label: "Unrated", gradient: "from-gray-400/10 to-gray-500/5" },
-              { rating: "1200-1399", stars: 1, color: "#77FF77", label: "1★ Apprentice", gradient: "from-lime-400/10 to-lime-500/5" },
-              { rating: "1400-1599", stars: 2, color: "#77DDFF", label: "2★ Pupil", gradient: "from-cyan-400/10 to-cyan-500/5" },
-              { rating: "1600-1799", stars: 3, color: "#00CC66", label: "3★ Specialist", gradient: "from-green-500/10 to-green-600/5" },
-              { rating: "1800-1999", stars: 4, color: "#6666FF", label: "4★ Expert", gradient: "from-blue-500/10 to-blue-600/5" },
-              { rating: "2000-2199", stars: 5, color: "#FFCC00", label: "5★ Master", gradient: "from-yellow-500/10 to-yellow-600/5" },
-              { rating: "2200-2499", stars: 6, color: "#FF6600", label: "6★ Grandmaster", gradient: "from-orange-500/10 to-orange-600/5" },
-              { rating: "2500+", stars: 7, color: "#FF0000", label: "7★ Legendary", gradient: "from-red-500/10 to-red-600/5" }
-            ].map((tier) => (
-              <div
-                key={tier.rating}
-                className={`flex items-center gap-2 p-3 rounded-lg bg-gradient-to-br ${tier.gradient} border border-border/50`}
-              >
-                <div className="flex items-center gap-0.5">
-                  {tier.stars > 0 ? (
-                    Array.from({ length: tier.stars }, (_, i) => (
-                      <span key={i} className="text-base leading-none" style={{ color: tier.color }}>★</span>
-                    ))
-                  ) : (
-                    <span className="text-base leading-none" style={{ color: tier.color }}>○</span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-foreground truncate" style={{ color: tier.color }}>
-                    {tier.label}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-medium">{tier.rating}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

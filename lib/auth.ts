@@ -120,7 +120,8 @@ export const signInWithGoogle = async (): Promise<AuthResponse> => {
 // Get User Profile
 export const getUserProfile = async (): Promise<User> => {
   try {
-    const response = await api.get('/auth/profile');
+    const response = await api.get('/profile');
+    console.log('User profile response:', response.data);
     return response.data.user;
   } catch (error: any) {
     throw new Error(error.response?.data?.message || 'Failed to fetch profile');

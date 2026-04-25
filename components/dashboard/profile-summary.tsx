@@ -14,6 +14,12 @@ export function ProfileSummaryCard() {
   const [syncing, setSyncing] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
 
+  // Debug: Log user object
+  useEffect(() => {
+    console.log('ProfileSummaryCard - User object:', user);
+    console.log('ProfileSummaryCard - lastSyncedAt:', user?.lastSyncedAt);
+  }, [user])
+
   // Update current time every minute to keep "X minutes ago" accurate
   useEffect(() => {
     const interval = setInterval(() => {
@@ -31,9 +37,15 @@ export function ProfileSummaryCard() {
   }
 
   const formatLastSyncTime = (lastSyncedAt: string | null) => {
+    console.log('formatLastSyncTime called with:', lastSyncedAt, 'Type:', typeof lastSyncedAt);
+    
     if (!lastSyncedAt) return 'Never synced'
     
     const syncDate = new Date(lastSyncedAt)
+    console.log('Parsed sync date:', syncDate, 'Is valid:', !isNaN(syncDate.getTime()));
+    
+    if (isNaN(syncDate.getTime())) return 'Never synced'
+    
     const diffInMinutes = Math.floor((currentTime.getTime() - syncDate.getTime()) / (1000 * 60))
     
     if (diffInMinutes < 1) return 'Just now'
