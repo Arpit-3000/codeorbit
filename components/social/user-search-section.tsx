@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Search, UserPlus, UserCheck, Loader2, Edit } from 'lucide-react';
+import { Search, UserPlus, UserCheck, Loader2, Clock, UserMinus } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,8 @@ import { searchUsers, sendFriendRequest, getUserSuggestions, SearchUser } from '
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 
+type FollowStatus = 'none' | 'pending' | 'following';
+
 export function UserSearchSection() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,20 +21,11 @@ export function UserSearchSection() {
   const [suggestions, setSuggestions] = useState<SearchUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
-  const [followingUsers, setFollowingUsers] = useState<Set<string>>(new Set());
-  const [needsProfile, setNeedsProfile] = useState(false);
+  const [followStatus, setFollowStatus] = useState<Map<string, FollowStatus>>(new Map());
 
   useEffect(() => {
     loadSuggestions();
-    checkProfileSetup();
   }, []);
-
-  const checkProfileSetup = async () => {
-    // Check if user has set up their profile
-    if (user && !user.displayName) {
-      setNeedsProfile(true);
-    }
-  };
 
   const loadSuggestions = async () => {
     try {
@@ -76,20 +69,68 @@ export function UserSearchSection() {
     }
   };
 
-  const handleFollow = async (userId: string) => {
+  const handleFollowAction = async (userId: string) => {
+    const currentStatus = followStatus.get(userId) || 'none';
+
     try {
-      await sendFriendRequest(userId);
-      setFollowingUsers(prev => new Set(prev).add(userId));
-      toast({
-        title: 'Success',
-        description: 'Follow request sent',
-      });
+      if (currentStatus === 'none') {
+        // Send follow request
+        await sendFriendRequest(userId);
+        setFollowStatus(prev => new Map(prev).set(userId, 'pending'));
+        toast({
+          title: 'Success',
+          description: 'Follow request sent',
+        });
+      } else if (currentStatus === 'following') {
+        // Unfollow user
+        // TODO: Call unfollow API when available
+        setFollowStatus(prev => new Map(prev).set(userId, 'none'));
+        toast({
+          title: 'Success',
+          description: 'Unfollowed user',
+        });
+      }
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to send request',
+        description: error.response?.data?.message || 'Failed to perform action',
         variant: 'destructive',
       });
+    }
+  };
+
+  const getFollowButton = (userId: string) => {
+    const status = followStatus.get(userId) || 'none';
+
+    switch (status) {
+      case 'pending':
+        return (
+          <Button size="sm" variant="outline" disabled>
+            <Clock className="h-4 w-4 mr-2" />
+            Pending
+          </Button>
+        );
+      case 'following':
+        return (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => handleFollowAction(userId)}
+          >
+            <UserMinus className="h-4 w-4 mr-2" />
+            Unfollow
+          </Button>
+        );
+      default:
+        return (
+          <Button
+            size="sm"
+            onClick={() => handleFollowAction(userId)}
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Follow
+          </Button>
+        );
     }
   };
 
@@ -124,23 +165,7 @@ export function UserSearchSection() {
               <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{user.bio}</p>
             )}
           </div>
-          <Button
-            size="sm"
-            onClick={() => handleFollow(user._id)}
-            disabled={followingUsers.has(user._id)}
-          >
-            {followingUsers.has(user._id) ? (
-              <>
-                <UserCheck className="h-4 w-4 mr-2" />
-                Following
-              </>
-            ) : (
-              <>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Follow
-              </>
-            )}
-          </Button>
+          {getFollowButton(user._id)}
         </div>
       </CardContent>
     </Card>
@@ -148,40 +173,11 @@ export function UserSearchSection() {
 
   return (
     <div className="space-y-6">
-      {needsProfile && (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold">Complete Your Profile</p>
-                <p className="text-sm text-muted-foreground">
-                  Set up your username and bio to start connecting with others
-                </p>
-              </div>
-              <Link href="/profile-edit">
-                <Button>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Profile
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Search Users</CardTitle>
-              <CardDescription>Find and connect with other developers</CardDescription>
-            </div>
-            <Link href="/profile-edit">
-              <Button variant="outline" size="sm">
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Profile
-              </Button>
-            </Link>
+          <div>
+            <CardTitle>Search Users</CardTitle>
+            <CardDescription>Find and connect with other developers</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

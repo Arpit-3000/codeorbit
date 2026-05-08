@@ -50,6 +50,7 @@ export interface User {
   displayName: string | null;
   photoURL: string | null;
   provider: "local" | "google";
+  username?: string;
   lastSyncedAt?: string | null;
   platforms?: {
     leetcode?: any;

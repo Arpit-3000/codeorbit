@@ -22,6 +22,7 @@ import { AIInsightsPage } from "@/components/pages/ai-insights-page"
 import { ProfilePage } from "@/components/pages/profile-page"
 import { ActivityPage } from "@/components/pages/activity-page"
 import { DiscussionPage } from "@/components/pages/discussion-page"
+import { ProfileCompletionModal } from "@/components/profile/profile-completion-modal"
 import { StatsModeProvider, useStatsMode } from "@/contexts/stats-mode-context"
 import { Button } from "@/components/ui/button"
 import { Code2, Trophy } from "lucide-react"
@@ -156,6 +157,7 @@ export default function Home() {
   return (
     <AuthGuard>
       <StatsModeProvider>
+        <ProfileCompletionModal />
         <div className="flex min-h-screen bg-background">
           <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
