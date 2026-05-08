@@ -504,7 +504,289 @@ export interface SyncResponse {
   lastSyncedAt: string;
 }
 
+export interface PlatformSyncResponse {
+  success: boolean;
+  platform: string;
+  [key: string]: any;
+}
+
 export const syncAllPlatforms = async (): Promise<SyncResponse> => {
   const res = await api.post("/sync/all");
+  return res.data;
+};
+
+export const syncLeetCode = async (): Promise<PlatformSyncResponse> => {
+  const res = await api.post("/sync/leetcode");
+  return res.data;
+};
+
+export const syncCodeforces = async (): Promise<PlatformSyncResponse> => {
+  const res = await api.post("/sync/codeforces");
+  return res.data;
+};
+
+export const syncGithub = async (): Promise<PlatformSyncResponse> => {
+  const res = await api.post("/sync/github");
+  return res.data;
+};
+
+export const syncCodeChef = async (): Promise<PlatformSyncResponse> => {
+  const res = await api.post("/sync/codechef");
+  return res.data;
+};
+
+export const syncGFG = async (): Promise<PlatformSyncResponse> => {
+  const res = await api.post("/sync/gfg");
+  return res.data;
+};
+
+
+// ==================== SOCIAL FEATURES ====================
+
+// Users
+export interface SearchUser {
+  _id: string;
+  displayName: string;
+  username: string;
+  uniqueId?: string;
+  email: string;
+  photoURL?: string;
+  profileImage?: string;
+  bio?: string;
+  onlineStatus: boolean;
+}
+
+export interface UserSearchData {
+  users: SearchUser[];
+}
+
+export const searchUsers = async (query: string): Promise<UserSearchData> => {
+  const res = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+  return res.data;
+};
+
+export const getUserByUsername = async (username: string) => {
+  const res = await api.get(`/users/${username}`);
+  return res.data;
+};
+
+export const getUserSuggestions = async () => {
+  const res = await api.get('/users/suggestions');
+  return res.data;
+};
+
+export const getMutualFriends = async (userId: string) => {
+  const res = await api.get(`/users/mutual/${userId}`);
+  return res.data;
+};
+
+export interface UpdateProfileData {
+  username?: string;
+  bio?: string;
+  accountType?: 'public' | 'private';
+  socialLinks?: {
+    github?: string;
+    linkedin?: string;
+    portfolio?: string;
+    twitter?: string;
+  };
+  profileImage?: string;
+  bannerImage?: string;
+}
+
+export const updateUserProfile = async (data: UpdateProfileData) => {
+  const res = await api.patch('/users/profile', data);
+  return res.data;
+};
+
+// Friends
+export const sendFriendRequest = async (userId: string) => {
+  const res = await api.post(`/friends/request/${userId}`);
+  return res.data;
+};
+
+export const cancelFriendRequest = async (userId: string) => {
+  const res = await api.post(`/friends/cancel/${userId}`);
+  return res.data;
+};
+
+export const acceptFriendRequest = async (userId: string) => {
+  const res = await api.post(`/friends/accept/${userId}`);
+  return res.data;
+};
+
+export const rejectFriendRequest = async (userId: string) => {
+  const res = await api.post(`/friends/reject/${userId}`);
+  return res.data;
+};
+
+export const removeFriend = async (userId: string) => {
+  const res = await api.delete(`/friends/remove/${userId}`);
+  return res.data;
+};
+
+export const getFriendsList = async () => {
+  const res = await api.get('/friends/list');
+  return res.data;
+};
+
+export const getFriendRequests = async () => {
+  const res = await api.get('/friends/requests');
+  return res.data;
+};
+
+export const getFollowers = async (userId: string) => {
+  const res = await api.get(`/friends/followers/${userId}`);
+  return res.data;
+};
+
+export const getFollowing = async (userId: string) => {
+  const res = await api.get(`/friends/following/${userId}`);
+  return res.data;
+};
+
+// Notifications
+export interface Notification {
+  _id: string;
+  sender: {
+    _id: string;
+    displayName: string;
+    username: string;
+    photoURL?: string;
+    profileImage?: string;
+  };
+  receiver: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata?: any;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationsData {
+  notifications: Notification[];
+  unreadCount: number;
+}
+
+export const getNotifications = async (limit = 50, skip = 0): Promise<NotificationsData> => {
+  const res = await api.get(`/notifications?limit=${limit}&skip=${skip}`);
+  return res.data;
+};
+
+export const markNotificationAsRead = async (notificationId: string) => {
+  const res = await api.patch(`/notifications/${notificationId}/read`);
+  return res.data;
+};
+
+export const markAllNotificationsAsRead = async () => {
+  const res = await api.patch('/notifications/read-all');
+  return res.data;
+};
+
+export const deleteNotification = async (notificationId: string) => {
+  const res = await api.delete(`/notifications/${notificationId}`);
+  return res.data;
+};
+
+export const getUnreadNotificationCount = async () => {
+  const res = await api.get('/notifications/unread-count');
+  return res.data;
+};
+
+// Ping
+export interface PingRequest {
+  _id: string;
+  sender: {
+    _id: string;
+    displayName: string;
+    username: string;
+    photoURL?: string;
+    profileImage?: string;
+  };
+  receiver: string;
+  status: string;
+  message?: string;
+  roomId?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export const sendPingRequest = async (userId: string, message?: string) => {
+  const res = await api.post(`/ping/send/${userId}`, { message });
+  return res.data;
+};
+
+export const acceptPingRequest = async (pingId: string) => {
+  const res = await api.post(`/ping/accept/${pingId}`);
+  return res.data;
+};
+
+export const rejectPingRequest = async (pingId: string) => {
+  const res = await api.post(`/ping/reject/${pingId}`);
+  return res.data;
+};
+
+export const getPendingPings = async () => {
+  const res = await api.get('/ping/pending');
+  return res.data;
+};
+
+// Rooms
+export interface Room {
+  _id: string;
+  roomId: string;
+  participants: Array<{
+    _id: string;
+    displayName: string;
+    username: string;
+    photoURL?: string;
+    profileImage?: string;
+    onlineStatus: boolean;
+  }>;
+  createdBy: {
+    _id: string;
+    displayName: string;
+    username: string;
+  };
+  active: boolean;
+  streamChannelId?: string;
+  createdAt: string;
+  closedAt?: string;
+}
+
+export const getUserRooms = async () => {
+  const res = await api.get('/rooms/user/me');
+  return res.data;
+};
+
+export const getRoomById = async (roomId: string) => {
+  const res = await api.get(`/rooms/${roomId}`);
+  return res.data;
+};
+
+export const closeRoom = async (roomId: string) => {
+  const res = await api.post(`/rooms/${roomId}/close`);
+  return res.data;
+};
+
+export const saveCanvasData = async (roomId: string, strokes: any[]) => {
+  const res = await api.post(`/rooms/${roomId}/canvas`, { strokes });
+  return res.data;
+};
+
+export const getCanvasData = async (roomId: string) => {
+  const res = await api.get(`/rooms/${roomId}/canvas`);
+  return res.data;
+};
+
+// Stream
+export const getStreamToken = async () => {
+  const res = await api.get('/stream/token');
+  return res.data;
+};
+
+export const initializeStreamUser = async () => {
+  const res = await api.post('/stream/initialize');
   return res.data;
 };

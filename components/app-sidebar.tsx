@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import {
   LayoutDashboard,
   User,
@@ -27,7 +28,7 @@ const navItems = [
   { icon: Activity, label: "Activity", id: "activity" },
   { icon: Trophy, label: "Contests", id: "contests" },
   { icon: BookOpen, label: "Resources", id: "resources" },
-  { icon: MessageSquare, label: "Discuss", id: "discuss" },
+  { icon: MessageSquare, label: "Social", id: "social", href: "/social" },
   { icon: Sparkles, label: "AI Insights", id: "ai-insights" },
   { icon: Settings, label: "Settings", id: "settings" },
 ]
@@ -70,6 +71,45 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
           const isActive = activeTab === item.id
+          
+          // If item has href, render as Link
+          if (item.href) {
+            const linkButton = (
+              <Link
+                key={item.id}
+                href={item.href}
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "size-[18px] shrink-0 transition-colors",
+                    "text-muted-foreground group-hover:text-accent-foreground"
+                  )}
+                />
+                {!collapsed && (
+                  <span className="animate-slide-in-left">{item.label}</span>
+                )}
+              </Link>
+            )
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.id}>
+                  <TooltipTrigger asChild>{linkButton}</TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>{item.label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )
+            }
+
+            return linkButton
+          }
+          
+          // Regular button
           const button = (
             <button
               key={item.id}

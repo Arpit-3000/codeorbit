@@ -7,15 +7,17 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Calendar, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity } from 'lucide-react';
+import { User, Mail, Calendar, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity, Edit } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getCurrentUserProfile } from '@/lib/api';
+import { ProfileEditDialog } from '@/components/profile/profile-edit-dialog';
 
 export default function ProfilePage() {
   const { user: authUser } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -35,6 +37,11 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, []);
+
+  const handleProfileUpdated = (updatedProfile: any) => {
+    setProfile({ ...profile, ...updatedProfile });
+    setEditDialogOpen(false);
+  };
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -73,9 +80,15 @@ export default function ProfilePage() {
     <AuthGuard>
       <div className="min-h-screen bg-background p-6">
         <div className="mx-auto max-w-4xl space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Profile</h1>
-            <p className="text-muted-foreground">Manage your account settings and connected platforms</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Profile</h1>
+              <p className="text-muted-foreground">Manage your account settings and connected platforms</p>
+            </div>
+            <Button onClick={() => setEditDialogOpen(true)} className="gap-2">
+              <Edit className="h-4 w-4" />
+              Edit Profile
+            </Button>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
@@ -129,12 +142,78 @@ export default function ProfilePage() {
                         <span className="text-muted-foreground">Display Name:</span>
                         <span>{profile?.displayName || 'Not set'}</span>
                       </div>
+                      {profile?.username && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Username:</span>
+                          <span>@{profile.username}</span>
+                        </div>
+                      )}
+                      {profile?.bio && (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-muted-foreground">Bio:</span>
+                          <span className="text-sm">{profile.bio}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account Type:</span>
+                        <Badge variant={profile?.accountType === 'public' ? 'default' : 'secondary'}>
+                          {profile?.accountType || 'Public'}
+                        </Badge>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Last Synced:</span>
                         <span>{profile?.lastSyncedAt ? new Date(profile.lastSyncedAt).toLocaleDateString() : 'Never'}</span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Social Links */}
+                  {profile?.socialLinks && Object.values(profile.socialLinks).some(link => link) && (
+                    <>
+                      <Separator />
+                      <div className="space-y-4">
+                        <h4 className="font-medium">Social Links</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {profile.socialLinks.github && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={profile.socialLinks.github} target="_blank" rel="noopener noreferrer">
+                                <GitBranch className="h-4 w-4 mr-2" />
+                                GitHub
+                                <ExternalLink className="h-3 w-3 ml-2" />
+                              </a>
+                            </Button>
+                          )}
+                          {profile.socialLinks.linkedin && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={profile.socialLinks.linkedin} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                LinkedIn
+                                <ExternalLink className="h-3 w-3 ml-2" />
+                              </a>
+                            </Button>
+                          )}
+                          {profile.socialLinks.portfolio && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={profile.socialLinks.portfolio} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Portfolio
+                                <ExternalLink className="h-3 w-3 ml-2" />
+                              </a>
+                            </Button>
+                          )}
+                          {profile.socialLinks.twitter && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={profile.socialLinks.twitter} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Twitter
+                                <ExternalLink className="h-3 w-3 ml-2" />
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -143,12 +222,12 @@ export default function ProfilePage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5" />
-                    Activity Stats
+                    Activity & Social Stats
                   </CardTitle>
-                  <CardDescription>Your coding activity overview</CardDescription>
+                  <CardDescription>Your coding activity and social connections</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl font-bold text-foreground">{profile?.stats?.activeDays || 0}</div>
                       <div className="text-sm text-muted-foreground">Active Days</div>
@@ -156,6 +235,14 @@ export default function ProfilePage() {
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl font-bold text-foreground">{profile?.stats?.consistencyScore || 0}%</div>
                       <div className="text-sm text-muted-foreground">Consistency</div>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <div className="text-2xl font-bold text-foreground">{profile?.followers?.length || 0}</div>
+                      <div className="text-sm text-muted-foreground">Followers</div>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <div className="text-2xl font-bold text-foreground">{profile?.following?.length || 0}</div>
+                      <div className="text-sm text-muted-foreground">Following</div>
                     </div>
                   </div>
                 </CardContent>
@@ -331,6 +418,14 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+        
+        {/* Profile Edit Dialog */}
+        <ProfileEditDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          profile={profile}
+          onProfileUpdated={handleProfileUpdated}
+        />
       </div>
     </AuthGuard>
   );

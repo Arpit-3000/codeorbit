@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { NotificationBell } from "@/components/social/notification-bell"
 
 interface TopNavbarProps {
   onConnectPlatforms: () => void
@@ -399,14 +400,7 @@ export function TopNavbar({ onConnectPlatforms }: TopNavbarProps) {
         </DropdownMenu>
 
         {/* Notifications */}
-        <button className="relative flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          <Bell className="size-4" />
-          {todayContests.length > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white animate-pulse">
-              {todayContests.length}
-            </span>
-          )}
-        </button>
+        <NotificationBell />
 
         {/* User Menu */}
         <DropdownMenu>
