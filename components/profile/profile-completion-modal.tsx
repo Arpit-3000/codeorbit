@@ -10,6 +10,8 @@ import { updateUserProfile } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 
+const PROFILE_COMPLETED_KEY = 'codeorbit_profile_completed';
+
 export function ProfileCompletionModal() {
   const { user, refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
@@ -20,13 +22,27 @@ export function ProfileCompletionModal() {
   });
 
   useEffect(() => {
-    // Check if user needs to complete profile
-    if (user && (!user.displayName || !user.username)) {
-      // Show modal after a short delay
-      const timer = setTimeout(() => {
-        setOpen(true);
-      }, 500);
-      return () => clearTimeout(timer);
+    // Check if profile completion modal was already shown and completed
+    const profileCompleted = localStorage.getItem(PROFILE_COMPLETED_KEY);
+    
+    // Only show modal if:
+    // 1. User exists
+    // 2. Profile not completed before (first time)
+    // 3. displayName or username is missing/empty
+    if (user && !profileCompleted) {
+      const needsDisplayName = !user.displayName || user.displayName.trim() === '';
+      const needsUsername = !user.username || user.username.trim() === '';
+      
+      if (needsDisplayName || needsUsername) {
+        // Show modal after a short delay
+        const timer = setTimeout(() => {
+          setOpen(true);
+        }, 500);
+        return () => clearTimeout(timer);
+      } else {
+        // User has both fields filled, mark as completed
+        localStorage.setItem(PROFILE_COMPLETED_KEY, 'true');
+      }
     }
   }, [user]);
 
@@ -66,6 +82,9 @@ export function ProfileCompletionModal() {
       setLoading(true);
       await updateUserProfile(formData);
       
+      // Mark profile as completed in localStorage
+      localStorage.setItem(PROFILE_COMPLETED_KEY, 'true');
+      
       toast({
         title: 'Profile Completed',
         description: 'Your profile has been set up successfully!',
@@ -88,9 +107,20 @@ export function ProfileCompletionModal() {
     }
   };
 
+  const handleSkip = () => {
+    // Mark as completed even if skipped, so it doesn't show again
+    localStorage.setItem(PROFILE_COMPLETED_KEY, 'true');
+    setOpen(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[500px]" onInteractOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(newOpen) => {
+      // Prevent closing by clicking outside
+      if (!newOpen && !loading) {
+        handleSkip();
+      }
+    }}>
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-primary" />
@@ -137,6 +167,14 @@ export function ProfileCompletionModal() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleSkip}
+              disabled={loading}
+            >
+              Skip for now
+            </Button>
             <Button
               type="submit"
               disabled={loading || !formData.displayName.trim() || !formData.username.trim()}
