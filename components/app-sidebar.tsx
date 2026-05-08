@@ -23,12 +23,12 @@ import {
 } from "@/components/ui/tooltip"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Orbit Hub", id: "dashboard" },
+  { icon: LayoutDashboard, label: "OrbitHub", id: "dashboard" },
   { icon: User, label: "Portfolio", id: "profile" },
-  { icon: Activity, label: "Activity Feed", id: "activity" },
-  { icon: Trophy, label: "Competitive Arena", id: "contests" },
+  { icon: Activity, label: "Activity", id: "activity" },
+  { icon: Trophy, label: "Contest Tracker", id: "contests" },
   { icon: BookOpen, label: "Knowledge Hub", id: "resources" },
-  { icon: MessageSquare, label: "Collab Space", id: "discuss" },
+  { icon: MessageSquare, label: "Collab Space", id: "social", href: "/social" },
   { icon: Sparkles, label: "Smart Insights", id: "ai-insights" },
   { icon: Settings, label: "Settings", id: "settings" },
 ]
