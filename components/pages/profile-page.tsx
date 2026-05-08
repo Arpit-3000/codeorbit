@@ -1,10 +1,12 @@
 "use client"
 
-import { User, Mail, Shield, Code2, Trophy, GitBranch, Activity, Calendar } from "lucide-react"
+import { User, Mail, Shield, Code2, Trophy, GitBranch, Activity, Edit, ExternalLink, Github, Linkedin, Globe, Twitter } from "lucide-react"
 import { useEffect, useState } from "react"
 import { getCurrentUserProfile } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { ProfileEditDialog } from "@/components/profile/profile-edit-dialog"
 
 interface ProfileData {
   id: string
@@ -12,7 +14,18 @@ interface ProfileData {
   displayName: string | null
   photoURL: string | null
   provider: string
+  username?: string
+  bio?: string
+  accountType?: string
+  socialLinks?: {
+    github?: string
+    linkedin?: string
+    portfolio?: string
+    twitter?: string
+  }
   lastSyncedAt: string
+  followers?: any[]
+  following?: any[]
   platforms: {
     leetcode: {
       username: string
@@ -37,6 +50,20 @@ interface ProfileData {
       totalStars: number
       totalContributions: number
     } | null
+    codechef?: {
+      username: string
+      rating: number
+      highestRating: number
+      stars: string
+      globalRank: number
+      countryRank: number
+    } | null
+    gfg?: {
+      username: string
+      score: number
+      problemsSolved: number
+      codingScore: number
+    } | null
   }
   stats: {
     activeDays: number
@@ -48,6 +75,7 @@ export function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -67,6 +95,11 @@ export function ProfilePage() {
 
     fetchProfile()
   }, [])
+
+  const handleProfileUpdated = (updatedProfile: any) => {
+    setProfile({ ...profile, ...updatedProfile } as ProfileData)
+    setEditDialogOpen(false)
+  }
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -116,9 +149,15 @@ export function ProfilePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Profile</h1>
-        <p className="mt-1 text-sm text-muted-foreground">View and edit your developer profile</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Profile</h1>
+          <p className="mt-1 text-sm text-muted-foreground">View and edit your developer profile</p>
+        </div>
+        <Button onClick={() => setEditDialogOpen(true)} className="gap-2">
+          <Edit className="h-4 w-4" />
+          Edit Profile
+        </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -164,6 +203,26 @@ export function ProfilePage() {
                   <span className="text-muted-foreground">Display Name:</span>
                   <span className="text-foreground">{profile.displayName || "Not set"}</span>
                 </div>
+                {profile.username && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Username:</span>
+                    <span className="text-foreground">@{profile.username}</span>
+                  </div>
+                )}
+                {profile.bio && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Bio:</span>
+                    <span className="text-foreground">{profile.bio}</span>
+                  </div>
+                )}
+                {profile.accountType && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account Type:</span>
+                    <Badge variant={profile.accountType === 'public' ? 'default' : 'secondary'}>
+                      {profile.accountType}
+                    </Badge>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Last Synced:</span>
                   <span className="text-foreground">
@@ -171,6 +230,54 @@ export function ProfilePage() {
                   </span>
                 </div>
               </div>
+              
+              {/* Social Links */}
+              {profile.socialLinks && Object.values(profile.socialLinks).some(link => link) && (
+                <>
+                  <div className="h-px bg-border" />
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-foreground">Social Links</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {profile.socialLinks.github && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={profile.socialLinks.github} target="_blank" rel="noopener noreferrer">
+                            <Github className="h-4 w-4 mr-2" />
+                            GitHub
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </a>
+                        </Button>
+                      )}
+                      {profile.socialLinks.linkedin && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={profile.socialLinks.linkedin} target="_blank" rel="noopener noreferrer">
+                            <Linkedin className="h-4 w-4 mr-2" />
+                            LinkedIn
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </a>
+                        </Button>
+                      )}
+                      {profile.socialLinks.portfolio && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={profile.socialLinks.portfolio} target="_blank" rel="noopener noreferrer">
+                            <Globe className="h-4 w-4 mr-2" />
+                            Portfolio
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </a>
+                        </Button>
+                      )}
+                      {profile.socialLinks.twitter && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={profile.socialLinks.twitter} target="_blank" rel="noopener noreferrer">
+                            <Twitter className="h-4 w-4 mr-2" />
+                            Twitter
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -178,9 +285,9 @@ export function ProfilePage() {
           <div className="rounded-xl border border-border bg-card p-6">
             <div className="mb-4 flex items-center gap-2">
               <Activity className="h-5 w-5 text-muted-foreground" />
-              <h3 className="text-base font-semibold text-foreground">Activity Stats</h3>
+              <h3 className="text-base font-semibold text-foreground">Activity & Social Stats</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="rounded-lg border border-border p-4">
                 <div className="text-3xl font-bold text-foreground">{profile.stats.activeDays}</div>
                 <div className="text-sm text-muted-foreground">Active Days</div>
@@ -188,6 +295,14 @@ export function ProfilePage() {
               <div className="rounded-lg border border-border p-4">
                 <div className="text-3xl font-bold text-foreground">{profile.stats.consistencyScore}%</div>
                 <div className="text-sm text-muted-foreground">Consistency</div>
+              </div>
+              <div className="rounded-lg border border-border p-4">
+                <div className="text-3xl font-bold text-foreground">{profile.followers?.length || 0}</div>
+                <div className="text-sm text-muted-foreground">Followers</div>
+              </div>
+              <div className="rounded-lg border border-border p-4">
+                <div className="text-3xl font-bold text-foreground">{profile.following?.length || 0}</div>
+                <div className="text-sm text-muted-foreground">Following</div>
               </div>
             </div>
           </div>
@@ -369,6 +484,14 @@ export function ProfilePage() {
           </div>
         </div>
       </div>
+      
+      {/* Profile Edit Dialog */}
+      <ProfileEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        profile={profile}
+        onProfileUpdated={handleProfileUpdated}
+      />
     </div>
   )
 }

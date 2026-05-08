@@ -3,6 +3,8 @@ import { Inter, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/auth-context'
+import { SocketProvider } from '@/contexts/socket-context'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -52,7 +54,10 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            {children}
+            <SocketProvider>
+              {children}
+              <Toaster />
+            </SocketProvider>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

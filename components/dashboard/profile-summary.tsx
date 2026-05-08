@@ -1,33 +1,18 @@
 "use client"
 
-import { RefreshCw, ExternalLink, CheckCircle2 } from "lucide-react"
+import { RefreshCw, CheckCircle2 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useState, useEffect } from "react"
-import { syncAllPlatforms } from "@/lib/api"
-import { useToast } from "@/hooks/use-toast"
+import { Progress } from "@/components/ui/progress"
+import { useState } from "react"
 
 export function ProfileSummaryCard() {
   const { user, refreshUser } = useAuth()
   const [syncing, setSyncing] = useState(false)
-  const [currentTime, setCurrentTime] = useState(new Date())
-
-  // Debug: Log user object
-  useEffect(() => {
-    console.log('ProfileSummaryCard - User object:', user);
-    console.log('ProfileSummaryCard - lastSyncedAt:', user?.lastSyncedAt);
-  }, [user])
-
-  // Update current time every minute to keep "X minutes ago" accurate
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 60000) // Update every minute
-
-    return () => clearInterval(interval)
-  }, [])
+  const [syncProgress, setSyncProgress] = useState(0)
+  const [currentPlatform, setCurrentPlatform] = useState("")
 
   const getInitials = (name: string | null, email: string) => {
     if (name) {
@@ -46,6 +31,7 @@ export function ProfileSummaryCard() {
     
     if (isNaN(syncDate.getTime())) return 'Never synced'
     
+    const currentTime = new Date()
     const diffInMinutes = Math.floor((currentTime.getTime() - syncDate.getTime()) / (1000 * 60))
     
     if (diffInMinutes < 1) return 'Just now'
@@ -78,19 +64,98 @@ export function ProfileSummaryCard() {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const result = await syncAllPlatforms()
+      setSyncProgress(0)
+      setCurrentPlatform("Starting sync...")
       
-      // Show success message
-      console.log("Sync result:", result)
+      // Count connected platforms
+      const connectedPlatforms: Array<{key: string, name: string, syncFn: () => Promise<any>}> = []
+      
+      if (user?.platforms?.leetcode?.verified) {
+        connectedPlatforms.push({ 
+          key: 'leetcode', 
+          name: 'LeetCode',
+          syncFn: async () => {
+            const { syncLeetCode } = await import('@/lib/api')
+            return syncLeetCode()
+          }
+        })
+      }
+      if (user?.platforms?.codeforces) {
+        connectedPlatforms.push({ 
+          key: 'codeforces', 
+          name: 'Codeforces',
+          syncFn: async () => {
+            const { syncCodeforces } = await import('@/lib/api')
+            return syncCodeforces()
+          }
+        })
+      }
+      if (user?.platforms?.github) {
+        connectedPlatforms.push({ 
+          key: 'github', 
+          name: 'GitHub',
+          syncFn: async () => {
+            const { syncGithub } = await import('@/lib/api')
+            return syncGithub()
+          }
+        })
+      }
+      if (user?.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating)) {
+        connectedPlatforms.push({ 
+          key: 'codechef', 
+          name: 'CodeChef',
+          syncFn: async () => {
+            const { syncCodeChef } = await import('@/lib/api')
+            return syncCodeChef()
+          }
+        })
+      }
+      if (user?.platforms?.gfg) {
+        connectedPlatforms.push({ 
+          key: 'gfg', 
+          name: 'GeeksforGeeks',
+          syncFn: async () => {
+            const { syncGFG } = await import('@/lib/api')
+            return syncGFG()
+          }
+        })
+      }
+      
+      const totalPlatforms = connectedPlatforms.length || 1
+      
+      // Sync each platform sequentially and update progress
+      for (let i = 0; i < connectedPlatforms.length; i++) {
+        const platform = connectedPlatforms[i]
+        setCurrentPlatform(`Syncing ${platform.name}...`)
+        
+        try {
+          await platform.syncFn()
+          console.log(`${platform.name} synced successfully`)
+        } catch (error: any) {
+          console.error(`${platform.name} sync failed:`, error)
+          // Continue with other platforms even if one fails
+        }
+        
+        // Update progress after each platform completes
+        const progress = ((i + 1) / totalPlatforms) * 100
+        setSyncProgress(progress)
+      }
+      
+      setCurrentPlatform("Sync complete!")
       
       // Refresh user data to get updated lastSyncedAt
       await refreshUser()
+      
+      // Wait a bit to show completion
+      await new Promise(resolve => setTimeout(resolve, 500))
       
       // Force page reload to update all components
       window.location.reload()
     } catch (error: any) {
       console.error("Sync failed:", error)
       alert(error.response?.data?.message || "Sync failed")
+      setSyncProgress(0)
+      setCurrentPlatform("")
     } finally {
       setSyncing(false)
     }
@@ -133,21 +198,30 @@ export function ProfileSummaryCard() {
             ))}
           </div>
 
-          <div className="flex items-start gap-4 pt-1">
-            <span className="text-xs text-muted-foreground">
-              Provider: {user?.provider || 'Unknown'}
-            </span>
-            <div className="flex flex-col items-start gap-1">
+          <div className="space-y-2 pt-1">
+            <div className="flex items-start gap-4">
+              <span className="text-xs text-muted-foreground">
+                Provider: {user?.provider || 'Unknown'}
+              </span>
+              <div className="flex flex-col items-start gap-1">
               <Button 
-                size="sm" 
-                variant="ghost" 
-                className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
-                onClick={handleSync}
-                disabled={syncing}
-              >
-                <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync Now'}
-              </Button>
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-7 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                  onClick={handleSync}
+                  disabled={syncing}
+                >
+                  <RefreshCw className={`size-3 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Syncing...' : 'Sync Now'}
+                </Button>
+            </div>
+            
+            {syncing && (
+              <div className="space-y-1">
+                <Progress value={syncProgress} className="h-1.5" />
+                <p className="text-xs text-muted-foreground">{currentPlatform}</p>
+              </div>
+            )}
               <span className="text-[10px] text-muted-foreground/80">
                 Last synced: {formatLastSyncTime(user?.lastSyncedAt || null)}
               </span>
