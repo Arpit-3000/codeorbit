@@ -713,8 +713,6 @@ GET /recommendations/difficulty-progression?platform=leetcode
 }
 ```
 
-## ❌ Error Responses
-
 All endpoints may return these error responses:
 
 ### 401 Unauthorized
