@@ -334,7 +334,7 @@ export function ProfilePage() {
                     <div>
                       <div className="text-muted-foreground">Rating</div>
                       <div className="font-semibold text-foreground">
-                        {profile.platforms.leetcode.contestRating || 0}
+                        {(profile.platforms.leetcode.contestRating || 0).toFixed(1)}
                       </div>
                     </div>
                   </div>
@@ -421,11 +421,11 @@ export function ProfilePage() {
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <div className="text-muted-foreground">Rating</div>
-                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.rating).toFixed(2)}</div>
+                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.rating).toFixed(1)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Highest</div>
-                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.highestRating).toFixed(2)}</div>
+                      <div className="font-semibold text-foreground">{Number(profile.platforms.codechef.highestRating).toFixed(1)}</div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">

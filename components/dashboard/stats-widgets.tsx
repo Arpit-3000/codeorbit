@@ -358,7 +358,7 @@ export function PlatformComparison() {
               </span>
               <span className="text-right font-mono text-foreground">
                 {p.rating ? (
-                  <AnimatedNumber value={p.rating} decimals={2} duration={1300} />
+                  <AnimatedNumber value={p.rating} decimals={1} duration={1300} />
                 ) : '-'}
               </span>
               <div className="flex items-center justify-end gap-2">

@@ -330,7 +330,7 @@ export function ContestRatingsChart() {
   if (!data || !data.hasData) {
     return (
       <div className="rounded-xl border border-border bg-card p-6">
-        <h3 className="mb-4 text-sm font-medium text-muted-foreground">Contest Ratings & Progress</h3>
+        <h3 className="mb-4 text-sm font-medium text-muted-foreground"></h3>
         <div className="text-sm text-muted-foreground">No contest ratings available. Connect LeetCode, Codeforces, or CodeChef to see your ratings.</div>
       </div>
     )
@@ -417,7 +417,7 @@ export function ContestRatingsChart() {
 
                   <div className="mb-2">
                     <div className="text-3xl font-bold text-foreground">
-                      <AnimatedNumber value={platform.rating} decimals={0} duration={2000} />
+                      <AnimatedNumber value={platform.rating} decimals={1} duration={2000} />
                     </div>
                     <div className="text-xs font-medium mt-1" style={{ color: ratingInfo.color }}>
                       {ratingInfo.label}
