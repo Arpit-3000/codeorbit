@@ -26,6 +26,8 @@ import { toast } from '@/hooks/use-toast';
 import { CollaborativeCanvas } from '@/components/room/collaborative-canvas';
 import { StreamChat, Channel as StreamChannel } from 'stream-chat';
 import { VideoCall } from '@/components/room/video-call';
+import { AppSidebar } from '@/components/app-sidebar';
+import { TopNavbar } from '@/components/top-navbar';
 
 export default function RoomPage() {
   const params = useParams();
@@ -347,8 +349,11 @@ export default function RoomPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex min-h-screen bg-background">
+        <AppSidebar activeTab="collab" onTabChange={() => {}} />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
       </div>
     );
   }
@@ -358,261 +363,269 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header - Fixed */}
-      <div className="border-b bg-card shadow-sm z-10 flex-shrink-0">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => router.push('/social')}
-                className="hover:bg-primary/10"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center gap-3">
-                <div className="flex -space-x-2">
-                  {room.participants.map((participant) => (
-                    <Avatar
-                      key={participant._id}
-                      className="h-9 w-9 border-2 border-background ring-2 ring-primary/10"
-                    >
-                      <AvatarImage src={participant.photoURL || participant.profileImage} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                        {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  ))}
-                </div>
-                <div>
-                  <h1 className="text-lg font-semibold flex items-center gap-2">
-                    Collaboration Room
-                    <Badge variant="outline" className="text-green-500 border-green-500">
-                      Active
-                    </Badge>
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    {room.participants.map(p => p.displayName || p.username).join(' • ')}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={handleCloseRoom}
-              className="shadow-sm"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Close Room
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content - Fixed Height with Internal Scroll */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Chat (Scrollable) */}
-        <div className="w-80 border-r bg-card flex flex-col">
-          {/* Chat Header - Fixed */}
-          <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Send className="h-4 w-4 text-primary" />
-              Chat
-            </h2>
-          </div>
-          
-          {/* Messages - Scrollable Only This Section */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-            {!channel ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
-                  <p className="text-sm text-muted-foreground">Connecting to chat...</p>
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center text-muted-foreground text-sm py-8">
-                <div className="mb-3 flex justify-center">
-                  <div className="p-4 rounded-full bg-primary/10">
-                    <Send className="h-6 w-6 text-primary" />
-                  </div>
-                </div>
-                <p className="font-medium">No messages yet</p>
-                <p className="text-xs mt-1">Start the conversation!</p>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg) => (
-                  <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
-                    <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-primary/10">
-                      <AvatarImage src={msg.user?.image} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs">
-                        {msg.user?.name?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-sm font-medium">{msg.user?.name || 'User'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(msg.created_at).toLocaleTimeString([], { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
-                        </p>
-                      </div>
-                      <div className="mt-1 bg-muted/50 rounded-lg px-3 py-2 text-sm break-words">
-                        {msg.text}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {isTyping && (
-                  <div className="flex gap-3 opacity-70">
-                    <Avatar className="h-8 w-8 flex-shrink-0">
-                      <AvatarFallback className="text-xs bg-muted">
-                        {isTyping[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{isTyping}</p>
-                      <div className="flex gap-1 mt-1">
-                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Message Input - Fixed at Bottom */}
-          <div className="border-t p-4 bg-muted/20 flex-shrink-0">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Type a message..."
-                value={messageInput}
-                onChange={(e) => handleTyping(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                disabled={!channel}
-                className="flex-1 bg-background"
-              />
-              <Button 
-                onClick={handleSendMessage} 
-                disabled={!channel || !messageInput.trim()}
-                size="icon"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-            {!channel && (
-              <p className="text-xs text-muted-foreground mt-2">Connecting to chat...</p>
-            )}
-          </div>
-        </div>
-
-        {/* Center - Canvas (Fixed, No Scroll) */}
-        <div className="flex-1 flex flex-col bg-gradient-to-br from-muted/20 to-muted/40 p-6 overflow-hidden">
-          <div className="h-full">
-            <CollaborativeCanvas roomId={room.roomId} />
-          </div>
-        </div>
-
-        {/* Right Sidebar - Video Call (Scrollable if needed) */}
-        <div className="w-80 border-l bg-card flex flex-col overflow-y-auto">
-          {/* Video Header - Fixed */}
-          <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Video className="h-4 w-4 text-primary" />
-              Video Call
-            </h2>
-          </div>
-
-          <div className="p-4 space-y-4">
-            {/* Video Call Section */}
-            {isVideoCallActive && streamToken && streamApiKey ? (
-              <div className="space-y-4">
-                <VideoCall
-                  apiKey={streamApiKey}
-                  token={streamToken}
-                  userId={user!.id}
-                  userName={user!.displayName || user!.email}
-                  userImage={user!.photoURL}
-                  callId={`video-${room.roomId}`}
-                  participants={room.participants}
-                  onCallEnd={handleEndCall}
-                />
-              </div>
-            ) : (
-              <>
-                {/* Call Button */}
-                <div className="space-y-2">
-                  <Button 
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-12 shadow-lg"
-                    onClick={handleStartVideoCall}
-                    disabled={!streamToken || !streamApiKey}
+    <div className="flex min-h-screen bg-background">
+      {/* Sidebar */}
+      <AppSidebar activeTab="collab" onTabChange={() => {}} />
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="h-screen bg-background flex flex-col overflow-hidden">
+          {/* Header - Fixed */}
+          <div className="border-b bg-card shadow-sm z-10 flex-shrink-0">
+            <div className="container mx-auto px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => router.push('/social')}
+                    className="hover:bg-primary/10"
                   >
-                    <Video className="h-5 w-5 mr-2" />
-                    Start Video Call
+                    <ArrowLeft className="h-5 w-5" />
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Video call includes audio and video
-                  </p>
-                </div>
-
-                {!streamToken && (
-                  <div className="flex items-center justify-center p-4">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
-                    <p className="text-xs text-muted-foreground">
-                      Initializing call features...
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex -space-x-2">
+                      {room.participants.map((participant) => (
+                        <Avatar
+                          key={participant._id}
+                          className="h-9 w-9 border-2 border-background ring-2 ring-primary/10"
+                        >
+                          <AvatarImage src={participant.photoURL || participant.profileImage} />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                            {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                    </div>
+                    <div>
+                      <h1 className="text-lg font-semibold flex items-center gap-2">
+                        Collaboration Room
+                        <Badge variant="outline" className="text-green-500 border-green-500">
+                          Active
+                        </Badge>
+                      </h1>
+                      <p className="text-sm text-muted-foreground">
+                        {room.participants.map(p => p.displayName || p.username).join(' • ')}
+                      </p>
+                    </div>
                   </div>
-                )}
-              </>
-            )}
+                </div>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleCloseRoom}
+                  className="shadow-sm"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Close Room
+                </Button>
+              </div>
+            </div>
+          </div>
 
-            {/* Participants */}
-            {!isVideoCallActive && (
-              <div className="pt-4">
-                <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  Participants ({room.participants.length})
-                </h3>
-                <div className="space-y-3">
-                  {room.participants.map((participant) => (
-                    <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-muted/50 to-muted/30 border border-border/50 hover:border-primary/30 transition-all">
-                      <Avatar className="h-10 w-10 ring-2 ring-primary/10">
-                        <AvatarImage src={participant.photoURL || participant.profileImage} />
-                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                          {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {participant.displayName || participant.username}
-                        </p>
-                        {participant.onlineStatus ? (
-                          <Badge variant="outline" className="text-green-500 border-green-500 text-xs mt-1">
-                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
-                            Online
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-gray-500 border-gray-500 text-xs mt-1">
-                            <div className="h-1.5 w-1.5 rounded-full bg-gray-500 mr-1.5"></div>
-                            Offline
-                          </Badge>
-                        )}
+          {/* Main Content - Fixed Height with Internal Scroll */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Sidebar - Chat (Scrollable) */}
+            <div className="w-80 border-r bg-card flex flex-col">
+              {/* Chat Header - Fixed */}
+              <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Send className="h-4 w-4 text-primary" />
+                  Chat
+                </h2>
+              </div>
+              
+              {/* Messages - Scrollable Only This Section */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+                {!channel ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+                      <p className="text-sm text-muted-foreground">Connecting to chat...</p>
+                    </div>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center text-muted-foreground text-sm py-8">
+                    <div className="mb-3 flex justify-center">
+                      <div className="p-4 rounded-full bg-primary/10">
+                        <Send className="h-6 w-6 text-primary" />
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <p className="font-medium">No messages yet</p>
+                    <p className="text-xs mt-1">Start the conversation!</p>
+                  </div>
+                ) : (
+                  <>
+                    {messages.map((msg) => (
+                      <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+                        <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-primary/10">
+                          <AvatarImage src={msg.user?.image} />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs">
+                            {msg.user?.name?.[0]?.toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-sm font-medium">{msg.user?.name || 'User'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(msg.created_at).toLocaleTimeString([], { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </p>
+                          </div>
+                          <div className="mt-1 bg-muted/50 rounded-lg px-3 py-2 text-sm break-words">
+                            {msg.text}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {isTyping && (
+                      <div className="flex gap-3 opacity-70">
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          <AvatarFallback className="text-xs bg-muted">
+                            {isTyping[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{isTyping}</p>
+                          <div className="flex gap-1 mt-1">
+                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            )}
+
+              {/* Message Input - Fixed at Bottom */}
+              <div className="border-t p-4 bg-muted/20 flex-shrink-0">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type a message..."
+                    value={messageInput}
+                    onChange={(e) => handleTyping(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                    disabled={!channel}
+                    className="flex-1 bg-background"
+                  />
+                  <Button 
+                    onClick={handleSendMessage} 
+                    disabled={!channel || !messageInput.trim()}
+                    size="icon"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!channel && (
+                  <p className="text-xs text-muted-foreground mt-2">Connecting to chat...</p>
+                )}
+              </div>
+            </div>
+
+            {/* Center - Canvas (Fixed, No Scroll) */}
+            <div className="flex-1 flex flex-col bg-gradient-to-br from-muted/20 to-muted/40 p-6 overflow-hidden">
+              <div className="h-full">
+                <CollaborativeCanvas roomId={room.roomId} />
+              </div>
+            </div>
+
+            {/* Right Sidebar - Video Call (Scrollable if needed) */}
+            <div className="w-80 border-l bg-card flex flex-col overflow-y-auto">
+              {/* Video Header - Fixed */}
+              <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Video className="h-4 w-4 text-primary" />
+                  Video Call
+                </h2>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* Video Call Section */}
+                {isVideoCallActive && streamToken && streamApiKey ? (
+                  <div className="space-y-4">
+                    <VideoCall
+                      apiKey={streamApiKey}
+                      token={streamToken}
+                      userId={user!.id}
+                      userName={user!.displayName || user!.email}
+                      userImage={user!.photoURL}
+                      callId={`video-${room.roomId}`}
+                      participants={room.participants}
+                      onCallEnd={handleEndCall}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {/* Call Button */}
+                    <div className="space-y-2">
+                      <Button 
+                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-12 shadow-lg"
+                        onClick={handleStartVideoCall}
+                        disabled={!streamToken || !streamApiKey}
+                      >
+                        <Video className="h-5 w-5 mr-2" />
+                        Start Video Call
+                      </Button>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Video call includes audio and video
+                      </p>
+                    </div>
+
+                    {!streamToken && (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
+                        <p className="text-xs text-muted-foreground">
+                          Initializing call features...
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Participants */}
+                {!isVideoCallActive && (
+                  <div className="pt-4">
+                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />
+                      Participants ({room.participants.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {room.participants.map((participant) => (
+                        <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-muted/50 to-muted/30 border border-border/50 hover:border-primary/30 transition-all">
+                          <Avatar className="h-10 w-10 ring-2 ring-primary/10">
+                            <AvatarImage src={participant.photoURL || participant.profileImage} />
+                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                              {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {participant.displayName || participant.username}
+                            </p>
+                            {participant.onlineStatus ? (
+                              <Badge variant="outline" className="text-green-500 border-green-500 text-xs mt-1">
+                                <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
+                                Online
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-gray-500 border-gray-500 text-xs mt-1">
+                                <div className="h-1.5 w-1.5 rounded-full bg-gray-500 mr-1.5"></div>
+                                Offline
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
