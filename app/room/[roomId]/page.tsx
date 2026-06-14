@@ -64,6 +64,7 @@ export default function RoomPage() {
         channel.off('message.new');
         channel.off('typing.start');
         channel.off('typing.stop');
+        channel.off('room_closed');
       }
     };
   }, [room, user]);
@@ -104,12 +105,11 @@ export default function RoomPage() {
       // Initialize Stream Chat client
       const client = StreamChat.getInstance(streamData.apiKey);
       
-      // Connect current user - this also creates the user if it doesn't exist
+      // Connect current user (only with id field - backend handles user creation)
       await client.connectUser(
         {
           id: user!.id,
-          name: user!.displayName || user!.email,
-          image: user!.photoURL,
+          // DO NOT add other fields - backend creates user with full data
         },
         streamData.token
       );
@@ -117,30 +117,11 @@ export default function RoomPage() {
       console.log('[STREAM] Current user connected successfully');
       setChatClient(client);
 
-      // Upsert all participant users to ensure they exist in Stream
-      console.log('[STREAM] Upserting all participants...');
-      const upsertPromises = room!.participants.map(async (participant) => {
-        try {
-          const userData = {
-            id: participant._id,
-            name: participant.displayName || participant.username || participant.email || 'User',
-            image: participant.photoURL || participant.profileImage || undefined,
-          };
-          console.log('[STREAM] Upserting user:', userData);
-          await client.upsertUser(userData);
-          console.log('[STREAM] ✅ User upserted successfully:', participant._id);
-          return participant._id;
-        } catch (err: any) {
-          console.error('[STREAM] ❌ Failed to upsert user:', participant._id, err.message);
-          throw err;
-        }
-      });
+      // Get or create channel with participant IDs
+      // Backend should have already created these users
+      const memberIds = room!.participants.map(p => p._id);
+      console.log('[STREAM] Channel members:', memberIds);
 
-      // Wait for all users to be created
-      const memberIds = await Promise.all(upsertPromises);
-      console.log('[STREAM] All users upserted. Member IDs:', memberIds);
-
-      // Get or create channel
       const channelId = room!.streamChannelId || `room-${room!.roomId}`;
       console.log('[STREAM] Creating/getting channel:', channelId);
       
@@ -180,6 +161,44 @@ export default function RoomPage() {
       streamChannel.on('typing.stop', (event) => {
         if (event.user?.id !== user!.id) {
           setIsTyping(null);
+        }
+      });
+
+      // Listen for room closed event
+      streamChannel.on('room_closed', (event) => {
+        console.log('[ROOM CLOSED] Room was closed by:', event.data?.closedBy);
+        
+        const wasClosedByMe = event.data?.closedBy === user!.id;
+        
+        toast({
+          title: 'Room Closed',
+          description: wasClosedByMe 
+            ? 'You closed the collaboration room' 
+            : 'The collaboration room has been closed by another participant',
+        });
+
+        // Cleanup and redirect after showing notification
+        setTimeout(() => {
+          cleanupAndRedirect();
+        }, 2000);
+      });
+
+      // Handle connection state changes
+      client.on('connection.changed', (event) => {
+        console.log('[STREAM] Connection state:', event);
+        if (event.online === false) {
+          console.log('[STREAM] ⚠️ Connection lost');
+          toast({
+            title: 'Connection Lost',
+            description: 'Trying to reconnect...',
+            variant: 'destructive',
+          });
+        } else if (event.online === true) {
+          console.log('[STREAM] ✅ Connection restored');
+          toast({
+            title: 'Connection Restored',
+            description: 'You are back online',
+          });
         }
       });
 
@@ -230,26 +249,73 @@ export default function RoomPage() {
     }
   };
 
+  const cleanupAndRedirect = async () => {
+    try {
+      console.log('[ROOM] Starting cleanup...');
+      
+      // Stop typing if active
+      if (channel) {
+        try {
+          await channel.stopTyping();
+        } catch (err) {
+          console.log('[ROOM] Could not stop typing:', err);
+        }
+      }
+
+      // Disconnect from Stream Chat
+      if (chatClient) {
+        try {
+          await chatClient.disconnectUser();
+          console.log('[ROOM] ✅ Disconnected from Stream');
+        } catch (err) {
+          console.log('[ROOM] Could not disconnect:', err);
+        }
+      }
+
+      // Clear states
+      setChannel(null);
+      setChatClient(null);
+      setMessages([]);
+      setIsVideoCallActive(false);
+
+      console.log('[ROOM] ✅ Cleanup complete');
+      
+      // Redirect to social page
+      router.push('/social');
+    } catch (error) {
+      console.error('[ROOM] Cleanup error:', error);
+      // Force redirect even if cleanup fails
+      router.push('/social');
+    }
+  };
+
   const handleCloseRoom = async () => {
     if (!room) return;
 
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      'Are you sure you want to close this room? This will end the session for all participants.'
+    );
+    
+    if (!confirmed) return;
+
     try {
+      console.log('[ROOM] Closing room:', room.roomId);
+      
+      // Call backend to close room
+      // Backend will send room_closed event to all participants
       await closeRoom(room.roomId);
       
-      // Disconnect from Stream Chat
-      if (chatClient) {
-        await chatClient.disconnectUser();
-      }
-
-      toast({
-        title: 'Room Closed',
-        description: 'The collaboration room has been closed',
-      });
-      router.push('/social');
+      console.log('[ROOM] ✅ Room close request sent to backend');
+      
+      // The room_closed event listener will handle cleanup and redirect
+      // No need to do it here as the event will be received
+      
     } catch (error: any) {
+      console.error('[ROOM] Failed to close room:', error);
       toast({
         title: 'Error',
-        description: 'Failed to close room',
+        description: error.response?.data?.message || 'Failed to close room',
         variant: 'destructive',
       });
     }
@@ -292,40 +358,53 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-3">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      {/* Header - Fixed */}
+      <div className="border-b bg-card shadow-sm z-10 flex-shrink-0">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => router.push('/social')}
+                className="hover:bg-primary/10"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
-              <div className="flex -space-x-2">
-                {room.participants.map((participant) => (
-                  <Avatar
-                    key={participant._id}
-                    className="h-8 w-8 border-2 border-background"
-                  >
-                    <AvatarImage src={participant.photoURL || participant.profileImage} />
-                    <AvatarFallback>
-                      {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold">Collaboration Room</h1>
-                <p className="text-xs text-muted-foreground">
-                  {room.participants.map(p => p.displayName || p.username).join(', ')}
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="flex -space-x-2">
+                  {room.participants.map((participant) => (
+                    <Avatar
+                      key={participant._id}
+                      className="h-9 w-9 border-2 border-background ring-2 ring-primary/10"
+                    >
+                      <AvatarImage src={participant.photoURL || participant.profileImage} />
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                        {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold flex items-center gap-2">
+                    Collaboration Room
+                    <Badge variant="outline" className="text-green-500 border-green-500">
+                      Active
+                    </Badge>
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    {room.participants.map(p => p.displayName || p.username).join(' • ')}
+                  </p>
+                </div>
               </div>
             </div>
-            <Button variant="destructive" size="sm" onClick={handleCloseRoom}>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleCloseRoom}
+              className="shadow-sm"
+            >
               <Trash2 className="h-4 w-4 mr-2" />
               Close Room
             </Button>
@@ -333,34 +412,44 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content - Fixed Height with Internal Scroll */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Chat */}
+        {/* Left Sidebar - Chat (Scrollable) */}
         <div className="w-80 border-r bg-card flex flex-col">
-          <div className="border-b px-4 py-3">
-            <h2 className="font-semibold">Discussion Chat</h2>
+          {/* Chat Header - Fixed */}
+          <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Send className="h-4 w-4 text-primary" />
+              Chat
+            </h2>
           </div>
           
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Messages - Scrollable Only This Section */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
             {!channel ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
                   <p className="text-sm text-muted-foreground">Connecting to chat...</p>
                 </div>
               </div>
             ) : messages.length === 0 ? (
               <div className="text-center text-muted-foreground text-sm py-8">
-                No messages yet. Start the conversation!
+                <div className="mb-3 flex justify-center">
+                  <div className="p-4 rounded-full bg-primary/10">
+                    <Send className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+                <p className="font-medium">No messages yet</p>
+                <p className="text-xs mt-1">Start the conversation!</p>
               </div>
             ) : (
               <>
                 {messages.map((msg) => (
-                  <div key={msg.id} className="flex gap-3">
-                    <Avatar className="h-8 w-8 flex-shrink-0">
+                  <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+                    <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-primary/10">
                       <AvatarImage src={msg.user?.image} />
-                      <AvatarFallback className="text-xs">
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs">
                         {msg.user?.name?.[0]?.toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
@@ -374,22 +463,26 @@ export default function RoomPage() {
                           })}
                         </p>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1 break-words">
+                      <div className="mt-1 bg-muted/50 rounded-lg px-3 py-2 text-sm break-words">
                         {msg.text}
-                      </p>
+                      </div>
                     </div>
                   </div>
                 ))}
                 {isTyping && (
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 opacity-70">
                     <Avatar className="h-8 w-8 flex-shrink-0">
-                      <AvatarFallback className="text-xs">
+                      <AvatarFallback className="text-xs bg-muted">
                         {isTyping[0].toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="text-sm font-medium">{isTyping}</p>
-                      <p className="text-sm text-muted-foreground italic">typing...</p>
+                      <div className="flex gap-1 mt-1">
+                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -397,8 +490,8 @@ export default function RoomPage() {
             )}
           </div>
 
-          {/* Message Input */}
-          <div className="border-t p-4">
+          {/* Message Input - Fixed at Bottom */}
+          <div className="border-t p-4 bg-muted/20 flex-shrink-0">
             <div className="flex gap-2">
               <Input
                 placeholder="Type a message..."
@@ -406,13 +499,13 @@ export default function RoomPage() {
                 onChange={(e) => handleTyping(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                 disabled={!channel}
-                className="flex-1"
+                className="flex-1 bg-background"
               />
               <Button 
                 onClick={handleSendMessage} 
                 disabled={!channel || !messageInput.trim()}
                 size="icon"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
               >
                 <Send className="h-4 w-4" />
               </Button>
@@ -423,19 +516,21 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Center - Canvas */}
-        <div className="flex-1 flex flex-col bg-muted/20">
-          <div className="flex-1 p-4">
-            <Card className="h-full">
-              <CollaborativeCanvas roomId={room.roomId} />
-            </Card>
+        {/* Center - Canvas (Fixed, No Scroll) */}
+        <div className="flex-1 flex flex-col bg-gradient-to-br from-muted/20 to-muted/40 p-6 overflow-hidden">
+          <div className="h-full">
+            <CollaborativeCanvas roomId={room.roomId} />
           </div>
         </div>
 
-        {/* Right Sidebar - Video Call */}
+        {/* Right Sidebar - Video Call (Scrollable if needed) */}
         <div className="w-80 border-l bg-card flex flex-col overflow-y-auto">
-          <div className="border-b px-4 py-3">
-            <h2 className="font-semibold">Video Call</h2>
+          {/* Video Header - Fixed */}
+          <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Video className="h-4 w-4 text-primary" />
+              Video Call
+            </h2>
           </div>
 
           <div className="p-4 space-y-4">
@@ -458,7 +553,7 @@ export default function RoomPage() {
                 {/* Call Button */}
                 <div className="space-y-2">
                   <Button 
-                    className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-12 shadow-lg"
                     onClick={handleStartVideoCall}
                     disabled={!streamToken || !streamApiKey}
                   >
@@ -471,9 +566,12 @@ export default function RoomPage() {
                 </div>
 
                 {!streamToken && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Initializing call features...
-                  </p>
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
+                    <p className="text-xs text-muted-foreground">
+                      Initializing call features...
+                    </p>
+                  </div>
                 )}
               </>
             )}
@@ -482,15 +580,15 @@ export default function RoomPage() {
             {!isVideoCallActive && (
               <div className="pt-4">
                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Users className="h-4 w-4" />
+                  <Users className="h-4 w-4 text-primary" />
                   Participants ({room.participants.length})
                 </h3>
                 <div className="space-y-3">
                   {room.participants.map((participant) => (
-                    <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                      <Avatar className="h-10 w-10">
+                    <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-muted/50 to-muted/30 border border-border/50 hover:border-primary/30 transition-all">
+                      <Avatar className="h-10 w-10 ring-2 ring-primary/10">
                         <AvatarImage src={participant.photoURL || participant.profileImage} />
-                        <AvatarFallback>
+                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
                           {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
@@ -500,10 +598,12 @@ export default function RoomPage() {
                         </p>
                         {participant.onlineStatus ? (
                           <Badge variant="outline" className="text-green-500 border-green-500 text-xs mt-1">
+                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
                             Online
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-gray-500 border-gray-500 text-xs mt-1">
+                            <div className="h-1.5 w-1.5 rounded-full bg-gray-500 mr-1.5"></div>
                             Offline
                           </Badge>
                         )}
