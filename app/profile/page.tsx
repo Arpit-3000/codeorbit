@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { User, Mail, Calendar, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity, Edit } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getCurrentUserProfile } from '@/lib/api';
 import { ProfileEditDialog } from '@/components/profile/profile-edit-dialog';
 
-export default function ProfilePage() {
+function ProfileContent() {
   const { user: authUser, refreshUser } = useAuth();
   const searchParams = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
@@ -438,5 +438,13 @@ export default function ProfilePage() {
         />
       </div>
     </AuthGuard>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+      <ProfileContent />
+    </Suspense>
   );
 }
