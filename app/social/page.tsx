@@ -12,14 +12,33 @@ import { PingRequestsSection } from '@/components/social/ping-requests-section';
 import { RoomsSection } from '@/components/social/rooms-section';
 import { BackendStatusIndicator } from '@/components/backend-status-indicator';
 import { AppSidebar } from '@/components/app-sidebar';
+import { useRouter } from 'next/navigation';
 
 export default function SocialPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('search');
+
+  // Handle sidebar navigation
+  const handleSidebarNav = (tab: string) => {
+    console.log('[SOCIAL] Sidebar nav to:', tab);
+    
+    // Map sidebar tabs to routes
+    const routes: Record<string, string> = {
+      'dashboard': '/',
+      'profile': '/profile',
+      'social': '/social',
+      // Add other routes as needed
+    };
+    
+    if (routes[tab]) {
+      router.push(routes[tab]);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
-      <AppSidebar activeTab="collab" onTabChange={() => {}} />
+      <AppSidebar activeTab="social" onTabChange={handleSidebarNav} />
       
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">

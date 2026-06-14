@@ -156,8 +156,43 @@ export default function RoomPage() {
         members: memberIds,
       });
 
-      await streamChannel.watch();
-      console.log('[STREAM] ✅ Channel connected successfully');
+      try {
+        await streamChannel.watch();
+        console.log('[STREAM] ✅ Channel connected successfully');
+      } catch (channelError: any) {
+        console.error('[STREAM] ❌ Channel watch failed:', channelError);
+        
+        // Check if it's a permission error
+        if (channelError.message?.includes('not allowed') || channelError.message?.includes('ReadChannel')) {
+          toast({
+            title: '⚠️ Backend Configuration Error',
+            description: 'Stream users not properly configured. Please contact the backend team to fix user permissions.',
+            variant: 'destructive',
+          });
+          
+          // Show detailed error for debugging
+          console.error('[STREAM] Permission Error Details:');
+          console.error('- User ID:', user!.id);
+          console.error('- Channel ID:', channelId);
+          console.error('- Members:', memberIds);
+          console.error('- Error:', channelError.message);
+          console.error('');
+          console.error('🔴 BACKEND FIX REQUIRED:');
+          console.error('   Backend must call streamClient.upsertUsers() for both users');
+          console.error('   Backend must add both users as channel members');
+          console.error('   See ROOM_PERMISSION_FIX.md for complete fix');
+          
+          // Redirect back after a delay
+          setTimeout(() => {
+            router.push('/social');
+          }, 5000);
+          
+          return;
+        }
+        
+        throw channelError;
+      }
+      
       setChannel(streamChannel);
 
       // Load existing messages first
