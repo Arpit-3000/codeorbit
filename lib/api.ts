@@ -387,6 +387,12 @@ export const refreshGithub = async (): Promise<ConnectGithubResponse> => {
   return res.data;
 };
 
+// ✅ Check GitHub connection status
+export const getGithubStatus = async () => {
+  const res = await api.get("/github/status");
+  return res.data;
+};
+
 export interface ConnectCodeChefResponse {
   message: string;
 }
