@@ -81,9 +81,9 @@ export default function GithubCallbackPage() {
           console.log('- Contributions:', response.github.totalContributions);
         }
 
-        // Redirect to profile after 2 seconds
+        // Redirect to profile after 2 seconds with refresh flag
         setTimeout(() => {
-          router.push('/profile');
+          router.push('/profile?refresh=true');
         }, 2000);
 
       } catch (error: any) {

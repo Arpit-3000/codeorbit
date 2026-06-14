@@ -9,11 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { User, Mail, Calendar, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity, Edit } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getCurrentUserProfile } from '@/lib/api';
 import { ProfileEditDialog } from '@/components/profile/profile-edit-dialog';
 
 export default function ProfilePage() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshUser } = useAuth();
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +26,14 @@ export default function ProfilePage() {
       try {
         setLoading(true);
         setError(null);
+        
+        // Check if coming from GitHub OAuth callback
+        const shouldRefresh = searchParams.get('refresh');
+        if (shouldRefresh === 'true') {
+          console.log('[PROFILE] Refreshing user data after GitHub connection');
+          await refreshUser();
+        }
+        
         const data = await getCurrentUserProfile();
         console.log("Profile data:", data);
         setProfile(data);
@@ -36,7 +46,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-  }, []);
+  }, [searchParams]);
 
   const handleProfileUpdated = (updatedProfile: any) => {
     setProfile({ ...profile, ...updatedProfile });
