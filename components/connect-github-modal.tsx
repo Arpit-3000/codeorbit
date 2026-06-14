@@ -17,7 +17,8 @@ import { toast } from '@/hooks/use-toast';
 
 const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
 const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
-const REDIRECT_URI = `${FRONTEND_URL}/auth/github/callback`;
+// Use API route as callback - GitHub will call this, which redirects to the page
+const REDIRECT_URI = `${FRONTEND_URL}/api/auth/callback/github`;
 
 interface GitHubData {
   username: string;
