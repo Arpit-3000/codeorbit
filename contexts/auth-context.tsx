@@ -112,27 +112,49 @@ export function AuthProvider({
       const token = localStorage.getItem("token");
 
       if (!token) {
+        console.log('[AUTH] No token found in localStorage');
         setUser(null);
         setLoading(false);
         return;
       }
 
-      const userData = await getUserProfile();
+      console.log('[AUTH] Token found, fetching user profile...');
 
+      // Fetch user profile from backend
+      const userData = await getUserProfile();
+      
+      console.log('[AUTH] ✅ User profile loaded:', userData.email);
       setUser(userData);
 
     } catch (error: any) {
 
-      console.error("Failed to fetch user:", error);
+      console.error("[AUTH] Failed to fetch user:", error);
 
-      // Check if it's a 401 error (token expired)
+      // Only clear token on 401 (Unauthorized) - token expired/invalid
       if (error.response?.status === 401) {
+        console.log('[AUTH] Token expired (401), clearing token');
         localStorage.removeItem("token");
         setUser(null);
-        // Don't redirect here as the API interceptor will handle it
+        // Don't redirect here - the API interceptor will handle it
       } else {
-        localStorage.removeItem("token");
-        setUser(null);
+        // For other errors (network, 500, etc), keep the user logged in
+        // Don't clear the token - it might be a temporary issue
+        console.warn('[AUTH] ⚠️ API error but keeping user logged in:', error.message);
+        
+        // Try to get cached user data
+        const cachedUserData = localStorage.getItem('user_data');
+        if (cachedUserData) {
+          try {
+            const parsedUser = JSON.parse(cachedUserData);
+            console.log('[AUTH] Using cached user data');
+            setUser(parsedUser);
+          } catch (e) {
+            console.error('[AUTH] Failed to parse cached user data');
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+        }
       }
 
     } finally {
@@ -151,6 +173,11 @@ export function AuthProvider({
 
     setUser(userData);
     setLoading(false);
+    
+    // Cache user data in localStorage for offline access
+    if (typeof window !== "undefined") {
+      localStorage.setItem('user_data', JSON.stringify(userData));
+    }
 
   };
 
@@ -158,6 +185,11 @@ export function AuthProvider({
 
     setUser(null);
     setLoading(false);
+    
+    // Clear cached user data
+    if (typeof window !== "undefined") {
+      localStorage.removeItem('user_data');
+    }
 
     authLogout();
 
@@ -168,9 +200,10 @@ export function AuthProvider({
     setUser(null);
     setLoading(false);
     
-    // Clear token
+    // Clear token and cached data
     if (typeof window !== "undefined") {
       localStorage.removeItem("token");
+      localStorage.removeItem('user_data');
     }
     
     // Redirect to login page

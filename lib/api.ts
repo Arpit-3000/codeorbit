@@ -352,10 +352,38 @@ export const connectCodeforces = async (handle: string): Promise<ConnectCodeforc
 
 export interface ConnectGithubResponse {
   message: string;
+  github?: {
+    username: string;
+    avatar: string;
+    followers: number;
+    following: number;
+    publicRepos: number;
+    totalStars: number;
+    totalContributions: number;
+    contributionGraph?: any[];
+  };
+  activityDaysAdded?: number;
 }
 
+// Old method - DEPRECATED (kept for backward compatibility)
 export const connectGithub = async (username: string): Promise<ConnectGithubResponse> => {
   const res = await api.post("/github/connect", { username });
+  return res.data;
+};
+
+// ✅ NEW: GitHub OAuth Methods
+export const connectGithubOAuth = async (code: string): Promise<ConnectGithubResponse> => {
+  const res = await api.post("/github/oauth/callback", { code });
+  return res.data;
+};
+
+export const disconnectGithub = async () => {
+  const res = await api.post("/github/disconnect");
+  return res.data;
+};
+
+export const refreshGithub = async (): Promise<ConnectGithubResponse> => {
+  const res = await api.post("/github/refresh");
   return res.data;
 };
 

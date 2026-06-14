@@ -13,8 +13,9 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, Link2, Loader2, ExternalLink, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { connectLeetCode, verifyLeetCode, connectCodeforces, connectGithub, connectCodeChef, connectGFG } from "@/lib/api"
+import { connectLeetCode, verifyLeetCode, connectCodeforces, connectCodeChef, connectGFG } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { ConnectGithubModal } from "@/components/connect-github-modal"
 
 interface Platform {
   id: string
@@ -40,6 +41,7 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
   const [usernameInput, setUsernameInput] = useState("")
   const [verificationCode, setVerificationCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [githubModalOpen, setGithubModalOpen] = useState(false)
 
   useEffect(() => {
     // Initialize platforms from user data
@@ -95,6 +97,13 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
   }, [user])
 
   const handleConnect = async (id: string) => {
+    // ✅ Handle GitHub with OAuth modal
+    if (id === "github") {
+      setGithubModalOpen(true);
+      setEditingId(null);
+      return;
+    }
+
     if (!usernameInput.trim()) return
     
     setConnectingId(id)
@@ -111,14 +120,6 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
         )
       } else if (id === "codeforces") {
         await connectCodeforces(usernameInput)
-        setPlatforms((prev) =>
-          prev.map((p) =>
-            p.id === id ? { ...p, connected: true, username: usernameInput } : p
-          )
-        )
-        await refreshUser()
-      } else if (id === "github") {
-        await connectGithub(usernameInput)
         setPlatforms((prev) =>
           prev.map((p) =>
             p.id === id ? { ...p, connected: true, username: usernameInput } : p
@@ -296,15 +297,38 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
                         <ExternalLink className="size-3.5" />
                       </a>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => handleDisconnect(platform.id)}
-                    >
-                      Disconnect
-                    </Button>
+                    {/* ✅ For GitHub, open modal to disconnect */}
+                    {platform.id === "github" ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => setGithubModalOpen(true)}
+                      >
+                        Manage
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleDisconnect(platform.id)}
+                      >
+                        Disconnect
+                      </Button>
+                    )}
                   </>
+                ) : platform.id === "github" ? (
+                  // ✅ For GitHub, show OAuth button directly
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+                    onClick={() => handleConnect(platform.id)}
+                  >
+                    <Link2 className="size-3" />
+                    Connect
+                  </Button>
                 ) : editingId === platform.id ? (
                   <div className="flex items-center gap-2">
                     <Input
@@ -348,6 +372,14 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
             </div>
           ))}
         </div>
+
+        {/* ✅ GitHub OAuth Modal */}
+        <ConnectGithubModal
+          open={githubModalOpen}
+          onOpenChange={setGithubModalOpen}
+          githubData={user?.platforms?.github || null}
+          onUpdate={refreshUser}
+        />
       </DialogContent>
     </Dialog>
   )

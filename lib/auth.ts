@@ -30,13 +30,23 @@ if (typeof window !== "undefined") {
     (response) => response,
     (error) => {
 
+      // Only redirect on 401 for auth-related endpoints
+      // Don't redirect on network errors or other failures
       if (
         error.response?.status === 401 &&
         !error.config.url?.includes("/auth/login") &&
         !error.config.url?.includes("/auth/signup")
       ) {
+        console.log('[AUTH API] 401 Unauthorized - Token expired or invalid');
         localStorage.removeItem("token");
+        localStorage.removeItem("user_data");
         window.location.href = "/auth/login";
+      } else if (error.response?.status === 401) {
+        // 401 on login/signup page - don't redirect
+        console.log('[AUTH API] 401 on auth page - invalid credentials');
+      } else if (!error.response) {
+        // Network error - don't logout user
+        console.warn('[AUTH API] Network error - keeping user logged in');
       }
 
       return Promise.reject(error);
@@ -84,6 +94,10 @@ export const loginWithEmail = async (email: string, password: string): Promise<A
     
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', data.token);
+      // Cache user data for offline access
+      if (data.user) {
+        localStorage.setItem('user_data', JSON.stringify(data.user));
+      }
     }
     
     return data;
@@ -110,6 +124,10 @@ export const signInWithGoogle = async (): Promise<AuthResponse> => {
     
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', data.token);
+      // Cache user data for offline access
+      if (data.user) {
+        localStorage.setItem('user_data', JSON.stringify(data.user));
+      }
     }
     
     return data;
@@ -122,10 +140,17 @@ export const signInWithGoogle = async (): Promise<AuthResponse> => {
 export const getUserProfile = async (): Promise<User> => {
   try {
     const response = await api.get('/auth/profile');
-    console.log('User profile response:', response.data);
+    console.log('[AUTH API] User profile response:', response.data);
+    
+    // Cache user data for offline access
+    if (typeof window !== 'undefined' && response.data.user) {
+      localStorage.setItem('user_data', JSON.stringify(response.data.user));
+    }
+    
     return response.data.user;
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || 'Failed to fetch profile');
+    console.error('[AUTH API] Failed to fetch profile:', error.response?.status, error.message);
+    throw error;
   }
 };
 
@@ -133,6 +158,7 @@ export const getUserProfile = async (): Promise<User> => {
 export const logout = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');
+    localStorage.removeItem('user_data');
     window.location.href = '/auth/login';
   }
 };
