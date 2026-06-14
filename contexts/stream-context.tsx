@@ -59,12 +59,12 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
         // Initialize Stream client
         const streamClient = StreamChat.getInstance(apiKey);
         
-        // Connect user
+        // Connect user (only with minimal data - backend handles user creation)
         await streamClient.connectUser(
           {
             id: userId,
-            name: user.displayName || user.email || 'User',
-            image: user.photoURL || undefined,
+            // DO NOT add other fields here - only id is required
+            // Backend creates/updates user with full data
           },
           streamToken
         );
