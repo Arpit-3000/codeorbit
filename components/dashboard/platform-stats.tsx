@@ -18,7 +18,11 @@ interface PlatformCardData {
   url: string
 }
 
-export function PlatformStatsGrid() {
+interface PlatformStatsGridProps {
+  showOnlyGithub?: boolean; // New prop to filter to GitHub only
+}
+
+export function PlatformStatsGrid({ showOnlyGithub = false }: PlatformStatsGridProps) {
   const { user } = useAuth()
   const [platforms, setPlatforms] = useState<PlatformCardData[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,8 +35,38 @@ export function PlatformStatsGrid() {
 
     const connectedPlatforms: PlatformCardData[] = []
 
+    // Check which platforms are connected
+    const hasLeetCode = user.platforms?.leetcode?.username && user.platforms?.leetcode?.verified;
+    const hasCodeforces = user.platforms?.codeforces?.handle;
+    const hasGithub = user.platforms?.github?.username;
+    const hasCodeChef = user.platforms?.codechef && (user.platforms.codechef.username || user.platforms.codechef.rating);
+    const hasGFG = user.platforms?.gfg?.username;
+    
+    const onlyGithubConnected = hasGithub && !hasLeetCode && !hasCodeforces && !hasCodeChef && !hasGFG;
+    
+    // ✅ If showOnlyGithub is true OR only GitHub is connected, show GitHub only
+    if (showOnlyGithub || onlyGithubConnected) {
+      // GitHub Only
+      if (hasGithub) {
+        connectedPlatforms.push({
+          name: "GitHub",
+          username: user.platforms.github.username,
+          solved: user.platforms.github.totalContributions || 0,
+          rating: user.platforms.github.totalStars || 0,
+          rank: `${user.platforms.github.publicRepos || 0} Repos`,
+          change: 0,
+          color: "text-foreground",
+          bgGradient: "from-foreground/5 to-foreground/[0.02]",
+          url: `https://github.com/${user.platforms.github.username}`
+        })
+      }
+      setPlatforms(connectedPlatforms)
+      setLoading(false)
+      return
+    }
+
     // LeetCode
-    if (user.platforms?.leetcode?.username && user.platforms?.leetcode?.verified) {
+    if (hasLeetCode) {
       const rating = user.platforms.leetcode.contestRating || 0
       let rank = "Unrated"
       
@@ -205,15 +239,27 @@ export function PlatformStatsGrid() {
             </div>
 
             {/* Footer */}
-            {platform.rating > 0 && (
+            {platform.name === "GitHub" ? (
+              <>
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <span className="text-xs text-muted-foreground">Stars</span>
+                  <span className={cn("text-sm font-semibold", platform.color)}>
+                    <AnimatedNumber value={platform.rating} duration={1800 + (i * 150)} />
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Repositories</span>
+                  <span className="text-sm font-semibold text-success">{platform.rank}</span>
+                </div>
+              </>
+            ) : platform.rating > 0 ? (
               <div className="flex items-center justify-between border-t border-border pt-3">
                 <span className="text-xs text-muted-foreground">Rating</span>
                 <span className={cn("text-sm font-semibold", platform.color)}>
                   <AnimatedNumber value={platform.rating} decimals={2} duration={1800 + (i * 150)} />
                 </span>
               </div>
-            )}
-            {platform.rating === 0 && (
+            ) : (
               <div className="flex items-center justify-between border-t border-border pt-3">
                 <span className="text-xs text-muted-foreground">Status</span>
                 <span className="text-sm font-semibold text-success">{platform.rank}</span>

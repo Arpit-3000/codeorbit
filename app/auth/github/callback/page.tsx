@@ -63,31 +63,43 @@ export default function GithubCallbackPage() {
 
         const response = await connectGithubOAuth(code);
         
-        console.log('[GITHUB OAUTH] ✅ Success:', response);
+        console.log('[GITHUB OAUTH] ✅ Backend Response:', response);
+        
+        // Check if connection was successful
+        if (!response.github || !response.github.username) {
+          console.error('[GITHUB OAUTH] Invalid response - no GitHub data received');
+          throw new Error('GitHub data not received from backend');
+        }
+        
         setStatus('success');
         setMessage('GitHub connected successfully!');
 
         toast({
           title: '✅ GitHub Connected',
-          description: `Connected @${response.github?.username || 'your account'} successfully!`,
+          description: `Connected @${response.github.username} successfully!`,
         });
 
         // Show success stats
-        if (response.github) {
-          console.log('[GITHUB OAUTH] Stats:');
-          console.log('- Username:', response.github.username);
-          console.log('- Repos:', response.github.publicRepos);
-          console.log('- Stars:', response.github.totalStars);
-          console.log('- Contributions:', response.github.totalContributions);
-        }
+        console.log('[GITHUB OAUTH] GitHub Data:');
+        console.log('- Username:', response.github.username);
+        console.log('- Repos:', response.github.publicRepos);
+        console.log('- Stars:', response.github.totalStars);
+        console.log('- Contributions:', response.github.totalContributions);
+        console.log('- Avatar:', response.github.avatar);
 
-        // Redirect to profile after 2 seconds with refresh flag
+        // Wait a bit for backend to save, then redirect
         setTimeout(() => {
-          router.push('/profile?refresh=true');
+          console.log('[GITHUB OAUTH] Redirecting to profile...');
+          router.push('/profile?refresh=true&github=connected');
         }, 2000);
 
       } catch (error: any) {
         console.error('[GITHUB OAUTH] ❌ Connection failed:', error);
+        console.error('[GITHUB OAUTH] Error details:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        });
         setStatus('error');
         setMessage(error.response?.data?.message || 'Failed to connect GitHub');
 

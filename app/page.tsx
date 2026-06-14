@@ -73,7 +73,8 @@ function DashboardContent() {
       {/* Platform Stats Grid */}
       <div>
         <h2 className="mb-4 text-base font-semibold text-foreground">Platform Stats</h2>
-        <PlatformStatsGrid />
+        {/* Show only GitHub if that's the only platform connected */}
+        <PlatformStatsGrid showOnlyGithub={false} />
       </div>
 
       {/* Charts Row */}

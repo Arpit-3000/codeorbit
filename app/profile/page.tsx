@@ -29,16 +29,27 @@ function ProfileContent() {
         
         // Check if coming from GitHub OAuth callback
         const shouldRefresh = searchParams.get('refresh');
-        if (shouldRefresh === 'true') {
+        const githubConnected = searchParams.get('github');
+        
+        if (shouldRefresh === 'true' || githubConnected === 'connected') {
           console.log('[PROFILE] Refreshing user data after GitHub connection');
+          console.log('[PROFILE] Waiting 1 second for backend to save data...');
+          
+          // Wait a bit for backend to finish saving
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Force refresh from auth context
           await refreshUser();
+          
+          console.log('[PROFILE] User data refreshed');
         }
         
         const data = await getCurrentUserProfile();
-        console.log("Profile data:", data);
+        console.log("[PROFILE] Profile data received:", data);
+        console.log("[PROFILE] GitHub data:", data.user?.platforms?.github);
         setProfile(data);
       } catch (err: any) {
-        console.error("Failed to fetch profile", err);
+        console.error("[PROFILE] Failed to fetch profile", err);
         setError(err.response?.data?.message || "Failed to load profile");
       } finally {
         setLoading(false);
@@ -46,7 +57,7 @@ function ProfileContent() {
     };
 
     fetchProfile();
-  }, [searchParams]);
+  }, [searchParams, refreshUser]);
 
   const handleProfileUpdated = (updatedProfile: any) => {
     setProfile({ ...profile, ...updatedProfile });
