@@ -107,18 +107,25 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
           });
         });
 
-        // Listen for ping accepted
+        // ✅ CRITICAL: Listen for ping accepted (User A - sender side)
         notifChannel.on('ping_accepted', (event: Event) => {
-          console.log('[STREAM] Ping accepted:', event);
+          console.log('[PING ACCEPTED] Event received:', event.data);
           const data = event.data as any;
+          
           toast({
-            title: '✅ Ping Accepted',
-            description: 'Your collaboration request was accepted!',
+            title: '🎉 Ping Accepted!',
+            description: 'Your collaboration request was accepted. Joining room...',
           });
           
           // Navigate to room if roomId is provided
           if (data.roomId) {
-            window.location.href = `/room/${data.roomId}`;
+            console.log('[PING ACCEPTED] Navigating to room:', data.roomId);
+            // Small delay to show the toast
+            setTimeout(() => {
+              window.location.href = `/room/${data.roomId}`;
+            }, 1000);
+          } else {
+            console.error('[PING ACCEPTED] No roomId in event data');
           }
         });
 

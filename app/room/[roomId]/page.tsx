@@ -26,8 +26,6 @@ import { toast } from '@/hooks/use-toast';
 import { CollaborativeCanvas } from '@/components/room/collaborative-canvas';
 import { StreamChat, Channel as StreamChannel } from 'stream-chat';
 import { VideoCall } from '@/components/room/video-call';
-import { AppSidebar } from '@/components/app-sidebar';
-import { TopNavbar } from '@/components/top-navbar';
 
 export default function RoomPage() {
   const params = useParams();
@@ -52,6 +50,30 @@ export default function RoomPage() {
     loadRoom();
   }, [roomId]);
 
+  // ✅ Handle page unload/refresh - cleanup resources
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Cleanup when page closes/refreshes
+      if (channel) {
+        console.log('[CLEANUP] Page unload - stopping channel watch');
+        channel.stopWatching().catch(console.error);
+      }
+      
+      // Optional: Show warning if in active call
+      if (isVideoCallActive) {
+        e.preventDefault();
+        e.returnValue = 'You are in an active call. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [channel, isVideoCallActive]);
+
   useEffect(() => {
     if (room && user) {
       initializeStreamChat();
@@ -62,11 +84,13 @@ export default function RoomPage() {
         chatClient.disconnectUser().catch(console.error);
       }
       if (channel) {
-        // Remove all event listeners
+        // Remove all event listeners to prevent memory leaks
         channel.off('message.new');
         channel.off('typing.start');
         channel.off('typing.stop');
         channel.off('room_closed');
+        // Stop watching the channel
+        channel.stopWatching().catch(console.error);
       }
     };
   }, [room, user]);
@@ -140,35 +164,47 @@ export default function RoomPage() {
       const state = await streamChannel.query({
         messages: { limit: 50 },
       });
+      console.log('[CHAT] Loaded existing messages:', state.messages?.length || 0);
       setMessages(state.messages || []);
 
-      // Listen for NEW messages only (after loading existing ones)
+      // ✅ Listen for NEW messages only (after loading existing ones)
       streamChannel.on('message.new', (event) => {
-        console.log('[STREAM] New message:', event.message);
+        console.log('[CHAT] New message received:', event.message);
         // Only add if not already in the list (prevent duplicates)
         setMessages((prev) => {
           const exists = prev.some(msg => msg.id === event.message.id);
-          if (exists) return prev;
+          if (exists) {
+            console.log('[CHAT] Message already exists, skipping duplicate');
+            return prev;
+          }
+          console.log('[CHAT] Adding new message to chat');
           return [...prev, event.message];
         });
       });
 
-      // Listen for typing
+      // ✅ Listen for typing indicators
       streamChannel.on('typing.start', (event) => {
+        console.log('[CHAT] User started typing:', event.user?.id);
         if (event.user?.id !== user!.id) {
-          setIsTyping(event.user?.name || 'Someone');
+          const typingUser = event.user?.name || 'Someone';
+          console.log('[CHAT] Showing typing indicator for:', typingUser);
+          setIsTyping(typingUser);
         }
       });
 
       streamChannel.on('typing.stop', (event) => {
+        console.log('[CHAT] User stopped typing:', event.user?.id);
         if (event.user?.id !== user!.id) {
+          console.log('[CHAT] Hiding typing indicator');
           setIsTyping(null);
         }
       });
 
-      // Listen for room closed event
+      // ✅ CRITICAL: Listen for room closed event (both users)
       streamChannel.on('room_closed', (event) => {
-        console.log('[ROOM CLOSED] Room was closed by:', event.data?.closedBy);
+        console.log('[ROOM CLOSED] Event received:', event);
+        console.log('[ROOM CLOSED] Data:', event.data);
+        console.log('[ROOM CLOSED] Closed by:', event.data?.closedBy);
         
         const wasClosedByMe = event.data?.closedBy === user!.id;
         
@@ -179,10 +215,12 @@ export default function RoomPage() {
             : 'The collaboration room has been closed by another participant',
         });
 
+        console.log('[ROOM CLOSED] Starting cleanup in 1.5s...');
+        
         // Cleanup and redirect after showing notification
         setTimeout(() => {
           cleanupAndRedirect();
-        }, 2000);
+        }, 1500);
       });
 
       // Handle connection state changes
@@ -219,18 +257,26 @@ export default function RoomPage() {
   };
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !channel) return;
+    if (!messageInput.trim() || !channel) {
+      console.log('[CHAT] Cannot send: empty message or no channel');
+      return;
+    }
 
     try {
+      console.log('[CHAT] Sending message:', messageInput.substring(0, 50) + '...');
+      
       await channel.sendMessage({
         text: messageInput,
       });
+      
+      console.log('[CHAT] ✅ Message sent successfully');
       setMessageInput('');
       
       // Stop typing indicator
       await channel.stopTyping();
+      console.log('[CHAT] Typing indicator stopped');
     } catch (error) {
-      console.error('[STREAM] Failed to send message:', error);
+      console.error('[CHAT] ❌ Failed to send message:', error);
       toast({
         title: 'Error',
         description: 'Failed to send message',
@@ -253,39 +299,57 @@ export default function RoomPage() {
 
   const cleanupAndRedirect = async () => {
     try {
-      console.log('[ROOM] Starting cleanup...');
+      console.log('[CLEANUP] Starting cleanup...');
       
-      // Stop typing if active
+      // 1. Stop video call if active
+      if (isVideoCallActive) {
+        console.log('[CLEANUP] Stopping video call...');
+        setIsVideoCallActive(false);
+        // VideoCall component will handle its own cleanup
+      }
+      
+      // 2. Stop typing if active
       if (channel) {
         try {
+          console.log('[CLEANUP] Stopping typing indicator...');
           await channel.stopTyping();
         } catch (err) {
-          console.log('[ROOM] Could not stop typing:', err);
+          console.log('[CLEANUP] Could not stop typing:', err);
         }
-      }
-
-      // Disconnect from Stream Chat
-      if (chatClient) {
+        
+        // 3. Stop watching channel (leave room)
         try {
-          await chatClient.disconnectUser();
-          console.log('[ROOM] ✅ Disconnected from Stream');
+          console.log('[CLEANUP] Leaving channel...');
+          await channel.stopWatching();
         } catch (err) {
-          console.log('[ROOM] Could not disconnect:', err);
+          console.log('[CLEANUP] Could not leave channel:', err);
         }
       }
 
-      // Clear states
+      // 4. Disconnect from Stream Chat (not recommended if other pages use it)
+      // Skip this - let the StreamProvider handle global connection
+      // if (chatClient) {
+      //   try {
+      //     await chatClient.disconnectUser();
+      //     console.log('[CLEANUP] ✅ Disconnected from Stream');
+      //   } catch (err) {
+      //     console.log('[CLEANUP] Could not disconnect:', err);
+      //   }
+      // }
+
+      // 5. Clear local states
+      console.log('[CLEANUP] Clearing states...');
       setChannel(null);
-      setChatClient(null);
       setMessages([]);
       setIsVideoCallActive(false);
 
-      console.log('[ROOM] ✅ Cleanup complete');
+      console.log('[CLEANUP] ✅ Cleanup complete');
       
-      // Redirect to social page
+      // 6. Redirect to social page
+      console.log('[CLEANUP] Redirecting to /social...');
       router.push('/social');
     } catch (error) {
-      console.error('[ROOM] Cleanup error:', error);
+      console.error('[CLEANUP] Cleanup error:', error);
       // Force redirect even if cleanup fails
       router.push('/social');
     }
@@ -302,19 +366,20 @@ export default function RoomPage() {
     if (!confirmed) return;
 
     try {
-      console.log('[ROOM] Closing room:', room.roomId);
+      console.log('[CLOSE] Closing room:', room.roomId);
       
       // Call backend to close room
-      // Backend will send room_closed event to all participants
+      // Backend will send room_closed event to ALL participants
       await closeRoom(room.roomId);
       
-      console.log('[ROOM] ✅ Room close request sent to backend');
+      console.log('[CLOSE] ✅ Room close request sent to backend');
+      console.log('[CLOSE] Waiting for room_closed event from backend...');
       
       // The room_closed event listener will handle cleanup and redirect
-      // No need to do it here as the event will be received
+      // Backend sends the event to ALL participants including the one who closed it
       
     } catch (error: any) {
-      console.error('[ROOM] Failed to close room:', error);
+      console.error('[CLOSE] Failed to close room:', error);
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to close room',
@@ -349,11 +414,8 @@ export default function RoomPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-background">
-        <AppSidebar activeTab="collab" onTabChange={() => {}} />
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -363,13 +425,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
-      <AppSidebar activeTab="collab" onTabChange={() => {}} />
-      
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
           {/* Header - Fixed */}
           <div className="border-b bg-card shadow-sm z-10 flex-shrink-0">
             <div className="container mx-auto px-6 py-4">
@@ -628,7 +684,5 @@ export default function RoomPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
   );
 }
