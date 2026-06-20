@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  Mic,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -29,6 +30,7 @@ const navItems = [
   { icon: Trophy, label: "Contest Tracker", id: "contests" },
   { icon: BookOpen, label: "Knowledge Hub", id: "resources" },
   { icon: MessageSquare, label: "Collab Space", id: "social", href: "/social" },
+  { icon: Mic, label: "Mock Interview", id: "mock-interview", href: "/mock-interview" },
   { icon: Sparkles, label: "Smart Insights", id: "ai-insights" },
   { icon: Settings, label: "Settings", id: "settings" },
 ]

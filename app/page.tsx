@@ -16,6 +16,7 @@ import {
 import { ActivityHeatmap } from "@/components/dashboard/activity-heatmap"
 import { StatsWidgets, ConsistencyScore, PlatformComparison } from "@/components/dashboard/stats-widgets"
 import { BadgesShowcase } from "@/components/dashboard/badges-showcase"
+import { GithubStatus } from "@/components/github-status"
 import { ContestsPage } from "@/components/pages/contests-page"
 import { ResourcesPage } from "@/components/pages/resources-page"
 import { AIInsightsPage } from "@/components/pages/ai-insights-page"
@@ -67,37 +68,50 @@ function DashboardContent() {
       {/* Profile Summary */}
       <ProfileSummaryCard />
 
-      {/* Stats Widgets */}
-      <StatsWidgets />
+      {/* Stats Widgets - Only show for DSA mode */}
+      {mode === "dsa" && <StatsWidgets />}
 
-      {/* Platform Stats Grid */}
-      <div>
-        <h2 className="mb-4 text-base font-semibold text-foreground">Platform Stats</h2>
-        {/* Show only GitHub if that's the only platform connected */}
-        <PlatformStatsGrid showOnlyGithub={false} />
-      </div>
+      {/* GitHub Status - Only show for Dev mode */}
+      {mode === "dev" && (
+        <div>
+          <h2 className="mb-4 text-base font-semibold text-foreground">Development Stats</h2>
+          <GithubStatus />
+        </div>
+      )}
 
-      {/* Charts Row */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TotalProblemsSolved />
-        <DifficultyDistribution />
-      </div>
+      {/* Platform Stats Grid - Only show for DSA mode */}
+      {mode === "dsa" && (
+        <div>
+          <h2 className="mb-4 text-base font-semibold text-foreground">Platform Stats</h2>
+          <PlatformStatsGrid showOnlyGithub={false} />
+        </div>
+      )}
 
-      {/* Contest Ratings */}
-      <ContestRatingsChart />
+      {/* Charts Row - Only show for DSA mode */}
+      {mode === "dsa" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <TotalProblemsSolved />
+          <DifficultyDistribution />
+        </div>
+      )}
+
+      {/* Contest Ratings - Only show for DSA mode */}
+      {mode === "dsa" && <ContestRatingsChart />}
 
       {/* Activity Heatmap */}
       <ActivityHeatmap />
 
-      {/* Bottom Row */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <WeeklyActivityChart />
-        <ConsistencyScore />
-        <PlatformComparison />
-      </div>
+      {/* Bottom Row - Only show for DSA mode */}
+      {mode === "dsa" && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <WeeklyActivityChart />
+          <ConsistencyScore />
+          <PlatformComparison />
+        </div>
+      )}
 
-      {/* Badges */}
-      <BadgesShowcase />
+      {/* Badges - Only show for DSA mode */}
+      {mode === "dsa" && <BadgesShowcase />}
     </div>
   )
 }
