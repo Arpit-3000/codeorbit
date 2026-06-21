@@ -77,6 +77,7 @@ export interface SubmitAnswerResponse {
       feedback: string
       confidence_level: string
     }
+    response_to_answer: string  // NEW: Contextual response from AI
     next_question: string
     stage: string
     difficulty: string
@@ -215,6 +216,41 @@ export async function speechToText(audioBlob: Blob) {
       },
     }
   )
+
+  return response.data
+}
+
+/**
+ * Stop AI Speech
+ */
+export async function stopSpeech(session_id: string) {
+  const response = await apiClient.post(`/stop-speech/${session_id}`)
+  return response.data
+}
+
+/**
+ * Submit Voice Answer
+ */
+export async function submitVoiceAnswer(session_id: string, audioBlob: Blob) {
+  const formData = new FormData()
+  formData.append("audio", audioBlob, "answer.webm")
+
+  const response = await apiClient.post(`/voice-answer/${session_id}`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  })
+
+  return response.data
+}
+
+/**
+ * Text to Speech
+ */
+export async function textToSpeech(text: string): Promise<Blob> {
+  const response = await apiClient.post("/text-to-speech", { text }, {
+    responseType: "blob",
+  })
 
   return response.data
 }

@@ -11,11 +11,12 @@ import {
   getSessionStatus, 
   submitAnswer, 
   endInterview,
-  speechToText 
+  speechToText,
+  stopSpeech
 } from "@/lib/ai-interview-api"
 
 interface Message {
-  type: "question" | "answer"
+  type: "question" | "answer" | "response"  // Added "response" type for AI's contextual feedback
   content: string
   timestamp: Date
 }
@@ -34,12 +35,18 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
   const [currentQuestion, setCurrentQuestion] = useState("")
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
+  const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesisUtterance | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     // Fetch initial question
     fetchInitialQuestion()
+    
+    // Cleanup speech on unmount
+    return () => {
+      stopAllSpeech()
+    }
   }, [sessionId])
 
   useEffect(() => {
@@ -48,6 +55,14 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  const stopAllSpeech = () => {
+    // Stop browser speech synthesis
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel()
+    }
+    setIsSpeaking(false)
   }
 
   const fetchInitialQuestion = async () => {
@@ -73,6 +88,9 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
   }
 
   const speakText = async (text: string) => {
+    // Stop any ongoing speech first
+    stopAllSpeech()
+    
     setIsSpeaking(true)
     try {
       // Use browser's speech synthesis
@@ -80,6 +98,9 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
       utterance.rate = 0.9
       utterance.pitch = 1
       utterance.onend = () => setIsSpeaking(false)
+      utterance.onerror = () => setIsSpeaking(false)
+      
+      setSpeechSynthesis(utterance)
       window.speechSynthesis.speak(utterance)
     } catch (error) {
       console.error("Speech synthesis error:", error)
@@ -171,15 +192,39 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
       })
 
       if (response.success) {
+        const responseToAnswer = response.data.response_to_answer
         const nextQuestion = response.data.next_question
         
-        // Add AI's next question to messages
-        setMessages(prev => [...prev, { type: "question", content: nextQuestion, timestamp: new Date() }])
+        // First, add AI's contextual response to answer
+        if (responseToAnswer) {
+          setMessages(prev => [...prev, { 
+            type: "response", 
+            content: responseToAnswer, 
+            timestamp: new Date() 
+          }])
+          
+          // Speak the contextual response
+          await speakText(responseToAnswer)
+          
+          // Small delay before showing next question
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+        
+        // Then add AI's next question to messages
+        setMessages(prev => [...prev, { 
+          type: "question", 
+          content: nextQuestion, 
+          timestamp: new Date() 
+        }])
         setCurrentQuestion(nextQuestion)
         setCurrentAnswer("")
         
         // Speak the next question
-        speakText(nextQuestion)
+        if (responseToAnswer) {
+          // If we spoke the response, wait a bit before next question
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        await speakText(nextQuestion)
         
         toast({
           title: "Answer evaluated",
@@ -201,6 +246,17 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
 
   const handleEndInterview = async () => {
     try {
+      // Stop all speech immediately
+      stopAllSpeech()
+      
+      // Call backend to stop speech
+      try {
+        await stopSpeech(sessionId)
+      } catch (error) {
+        console.error("Failed to stop speech on backend:", error)
+      }
+      
+      // End the interview
       const response = await endInterview(sessionId)
       
       if (response.success) {
@@ -243,18 +299,20 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
                 className={`max-w-[80%] rounded-lg p-4 ${
                   message.type === "answer"
                     ? "bg-primary text-primary-foreground"
+                    : message.type === "response"
+                    ? "bg-blue-100 dark:bg-blue-900 border-l-4 border-blue-500"
                     : "bg-muted"
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {message.type === "question" && (
+                  {(message.type === "question" || message.type === "response") && (
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <Mic className="w-4 h-4 text-primary" />
                     </div>
                   )}
                   <div className="flex-1">
                     <p className="text-sm font-medium mb-1">
-                      {message.type === "question" ? "Aria" : "You"}
+                      {message.type === "answer" ? "You" : "Aria"}
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     <p className="text-xs opacity-70 mt-2">
