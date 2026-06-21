@@ -16,7 +16,7 @@ import {
 } from "@/lib/ai-interview-api"
 
 interface Message {
-  type: "question" | "answer" | "response"  // Added "response" type for AI's contextual feedback
+  type: "question" | "answer"
   content: string
   timestamp: Date
 }
@@ -195,36 +195,22 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
         const responseToAnswer = response.data.response_to_answer
         const nextQuestion = response.data.next_question
         
-        // First, add AI's contextual response to answer
-        if (responseToAnswer) {
-          setMessages(prev => [...prev, { 
-            type: "response", 
-            content: responseToAnswer, 
-            timestamp: new Date() 
-          }])
-          
-          // Speak the contextual response
-          await speakText(responseToAnswer)
-          
-          // Small delay before showing next question
-          await new Promise(resolve => setTimeout(resolve, 1500))
-        }
+        // Combine response and question in one message
+        const combinedMessage = responseToAnswer 
+          ? `${responseToAnswer}\n\n${nextQuestion}`
+          : nextQuestion
         
-        // Then add AI's next question to messages
+        // Add AI's combined message (response + question)
         setMessages(prev => [...prev, { 
           type: "question", 
-          content: nextQuestion, 
+          content: combinedMessage, 
           timestamp: new Date() 
         }])
         setCurrentQuestion(nextQuestion)
         setCurrentAnswer("")
         
-        // Speak the next question
-        if (responseToAnswer) {
-          // If we spoke the response, wait a bit before next question
-          await new Promise(resolve => setTimeout(resolve, 500))
-        }
-        await speakText(nextQuestion)
+        // Speak the combined message
+        await speakText(combinedMessage)
         
         toast({
           title: "Answer evaluated",
@@ -299,20 +285,18 @@ export function InterviewRoom({ sessionId, onEnd }: InterviewRoomProps) {
                 className={`max-w-[80%] rounded-lg p-4 ${
                   message.type === "answer"
                     ? "bg-primary text-primary-foreground"
-                    : message.type === "response"
-                    ? "bg-blue-100 dark:bg-blue-900 border-l-4 border-blue-500"
                     : "bg-muted"
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {(message.type === "question" || message.type === "response") && (
+                  {message.type === "question" && (
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <Mic className="w-4 h-4 text-primary" />
                     </div>
                   )}
                   <div className="flex-1">
                     <p className="text-sm font-medium mb-1">
-                      {message.type === "answer" ? "You" : "Aria"}
+                      {message.type === "question" ? "Aria" : "You"}
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     <p className="text-xs opacity-70 mt-2">
