@@ -16,10 +16,11 @@ interface InterviewSetupProps {
 export function InterviewSetup({ onStart }: InterviewSetupProps) {
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [resumePath, setResumePath] = useState<string>("")
-  const [interviewType, setInterviewType] = useState<string>("react")
+  const [interviewType, setInterviewType] = useState<string>("mixed")
   const [difficulty, setDifficulty] = useState<string>("intermediate")
   const [uploading, setUploading] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [hasResume, setHasResume] = useState(false)
   const { toast } = useToast()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,9 +47,12 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
 
       if (response.success) {
         setResumePath(response.data.path)
+        setHasResume(true)
+        // Auto-set to mixed interview when resume is uploaded
+        setInterviewType("mixed")
         toast({
           title: "Resume uploaded successfully",
-          description: "Your resume has been analyzed",
+          description: "Interview will be based on your resume skills",
         })
       } else {
         throw new Error(response.error || "Upload failed")
@@ -156,7 +160,7 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
         <CardContent className="space-y-6">
           {/* Resume Upload */}
           <div className="space-y-2">
-            <Label>Resume (Optional but recommended)</Label>
+            <Label>Resume (Upload to get personalized interview)</Label>
             <div className="flex gap-3">
               <div className="flex-1">
                 <input
@@ -191,31 +195,49 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
               )}
             </div>
             {resumePath && (
-              <p className="text-sm text-green-600">✓ Resume uploaded and analyzed</p>
+              <p className="text-sm text-green-600">✓ Resume uploaded - Interview will be based on your skills</p>
+            )}
+            {!resumePath && (
+              <p className="text-xs text-muted-foreground">
+                💡 With resume: AI asks questions based on your skills. Without resume: Choose specific domain below.
+              </p>
             )}
           </div>
 
-          {/* Interview Type */}
-          <div className="space-y-2">
-            <Label>Interview Type</Label>
-            <Select value={interviewType} onValueChange={setInterviewType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dsa">Data Structures & Algorithms</SelectItem>
-                <SelectItem value="react">React</SelectItem>
-                <SelectItem value="node">Node.js</SelectItem>
-                <SelectItem value="cpp_java">C++ / Java</SelectItem>
-                <SelectItem value="dbms">Database Management</SelectItem>
-                <SelectItem value="os">Operating Systems</SelectItem>
-                <SelectItem value="cn">Computer Networks</SelectItem>
-                <SelectItem value="oops">Object-Oriented Programming</SelectItem>
-                <SelectItem value="system_design">System Design</SelectItem>
-                <SelectItem value="mixed">Full Interview (Mixed)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Interview Type - Only show if no resume */}
+          {!hasResume && (
+            <div className="space-y-2">
+              <Label>Interview Domain</Label>
+              <Select value={interviewType} onValueChange={setInterviewType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dsa">Data Structures & Algorithms</SelectItem>
+                  <SelectItem value="react">React</SelectItem>
+                  <SelectItem value="node">Node.js</SelectItem>
+                  <SelectItem value="cpp_java">C++ / Java</SelectItem>
+                  <SelectItem value="dbms">Database Management</SelectItem>
+                  <SelectItem value="os">Operating Systems</SelectItem>
+                  <SelectItem value="cn">Computer Networks</SelectItem>
+                  <SelectItem value="oops">Object-Oriented Programming</SelectItem>
+                  <SelectItem value="system_design">System Design</SelectItem>
+                  <SelectItem value="mixed">Mixed (All Topics)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select the domain you want to be interviewed on
+              </p>
+            </div>
+          )}
+          
+          {hasResume && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-blue-900 dark:text-blue-100">
+                <strong>Resume-based interview:</strong> Questions will be asked based on the skills and projects mentioned in your resume.
+              </p>
+            </div>
+          )}
 
           {/* Difficulty */}
           <div className="space-y-2">
@@ -258,12 +280,12 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
         <CardContent className="pt-6">
           <h3 className="font-semibold mb-2">How it works:</h3>
           <ol className="space-y-2 text-sm text-muted-foreground">
-            <li>1. Upload your resume (optional) for personalized questions</li>
-            <li>2. Select the type of interview and difficulty level</li>
-            <li>3. Click "Start Interview" to begin</li>
-            <li>4. Speak your answers using the microphone button</li>
-            <li>5. AI will respond with voice and ask follow-up questions</li>
-            <li>6. Get detailed feedback and report at the end</li>
+            <li>1. <strong>With Resume:</strong> Upload your resume for personalized interview based on your skills</li>
+            <li>2. <strong>Without Resume:</strong> Choose specific domain (React, DSA, etc.) to focus on</li>
+            <li>3. Select difficulty level (Beginner/Intermediate/Advanced)</li>
+            <li>4. Click "Start Interview" to begin with AI interviewer</li>
+            <li>5. Speak your answers using microphone or type them</li>
+            <li>6. Get real-time feedback and detailed report at the end</li>
           </ol>
         </CardContent>
       </Card>
