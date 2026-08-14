@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import { TopNavbar } from "@/components/top-navbar"
 import { InterviewSetup } from "./interview-setup"
@@ -10,6 +11,7 @@ import { InterviewReport } from "./interview-report"
 type InterviewStage = "setup" | "interview" | "report"
 
 export function MockInterviewLayout() {
+  const router = useRouter()
   const [stage, setStage] = useState<InterviewStage>("setup")
   const [sessionId, setSessionId] = useState<string>("")
   const [reportData, setReportData] = useState<any>(null)
@@ -30,12 +32,34 @@ export function MockInterviewLayout() {
     setStage("setup")
   }
 
+  // Handle sidebar navigation
+  const handleSidebarNav = (tab: string) => {
+    console.log('[MOCK INTERVIEW] Sidebar nav to:', tab)
+    
+    // Map sidebar tabs to routes
+    const routes: Record<string, string> = {
+      'dashboard': '/',
+      'profile': '/profile',
+      'activity': '/profile',
+      'contests': '/contests',
+      'resources': '/resources',
+      'social': '/social',
+      'mock-interview': '/mock-interview',
+      'ai-insights': '/ai-insights',
+      'settings': '/settings',
+    }
+    
+    if (routes[tab]) {
+      router.push(routes[tab])
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar activeTab="mock-interview" onTabChange={() => {}} />
+      <AppSidebar activeTab="mock-interview" onTabChange={handleSidebarNav} />
       
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopNavbar />
+        <TopNavbar onConnectPlatforms={() => {}} />
         
         <main className="flex-1 overflow-y-auto">
           {stage === "setup" && (

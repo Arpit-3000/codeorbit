@@ -26,8 +26,13 @@ export default function SocialPage() {
     const routes: Record<string, string> = {
       'dashboard': '/',
       'profile': '/profile',
+      'activity': '/profile',
+      'contests': '/contests',
+      'resources': '/resources',
       'social': '/social',
-      // Add other routes as needed
+      'mock-interview': '/mock-interview',
+      'ai-insights': '/ai-insights',
+      'settings': '/settings',
     };
     
     if (routes[tab]) {
