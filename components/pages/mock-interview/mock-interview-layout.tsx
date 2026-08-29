@@ -40,7 +40,7 @@ export function MockInterviewLayout() {
     const routes: Record<string, string> = {
       'dashboard': '/',
       'profile': '/profile',
-      'activity': '/profile',
+      'activity': '/activity',
       'contests': '/contests',
       'resources': '/resources',
       'social': '/social',

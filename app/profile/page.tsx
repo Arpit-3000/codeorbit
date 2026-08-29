@@ -2,24 +2,46 @@
 
 import { useAuth } from '@/contexts/auth-context';
 import { AuthGuard } from '@/components/auth/auth-guard';
+import { AppSidebar } from '@/components/app-sidebar';
+import { TopNavbar } from '@/components/top-navbar';
+import { StatsModeProvider } from '@/contexts/stats-mode-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Calendar, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity, Edit } from 'lucide-react';
+import { User, Mail, Shield, ExternalLink, Code2, Trophy, GitBranch, Activity, Edit } from 'lucide-react';
 import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { getCurrentUserProfile } from '@/lib/api';
 import { ProfileEditDialog } from '@/components/profile/profile-edit-dialog';
 
 function ProfileContent() {
-  const { user: authUser, refreshUser } = useAuth();
+  const { refreshUser } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  const handleSidebarNav = (tab: string) => {
+    const routes: Record<string, string> = {
+      'dashboard': '/',
+      'profile': '/profile',
+      'activity': '/activity',
+      'contests': '/contests',
+      'resources': '/resources',
+      'social': '/social',
+      'mock-interview': '/mock-interview',
+      'ai-insights': '/ai-insights',
+      'settings': '/settings',
+    };
+    
+    if (routes[tab]) {
+      router.push(routes[tab]);
+    }
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -46,7 +68,7 @@ function ProfileContent() {
         
         const data = await getCurrentUserProfile();
         console.log("[PROFILE] Profile data received:", data);
-        console.log("[PROFILE] GitHub data:", data.user?.platforms?.github);
+        console.log("[PROFILE] GitHub data:", data.platforms?.github);
         setProfile(data);
       } catch (err: any) {
         console.error("[PROFILE] Failed to fetch profile", err);
@@ -74,13 +96,21 @@ function ProfileContent() {
   if (loading) {
     return (
       <AuthGuard>
-        <div className="min-h-screen bg-background p-6">
-          <div className="mx-auto max-w-4xl">
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <StatsModeProvider>
+          <div className="flex min-h-screen bg-background">
+            <AppSidebar activeTab="profile" onTabChange={handleSidebarNav} />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <TopNavbar onConnectPlatforms={() => {}} />
+              <main className="flex-1 overflow-y-auto">
+                <div className="mx-auto max-w-7xl p-6 lg:p-8">
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                </div>
+              </main>
             </div>
           </div>
-        </div>
+        </StatsModeProvider>
       </AuthGuard>
     );
   }
@@ -88,31 +118,45 @@ function ProfileContent() {
   if (error) {
     return (
       <AuthGuard>
-        <div className="min-h-screen bg-background p-6">
-          <div className="mx-auto max-w-4xl">
-            <div className="text-sm text-destructive">Error: {error}</div>
+        <StatsModeProvider>
+          <div className="flex min-h-screen bg-background">
+            <AppSidebar activeTab="profile" onTabChange={handleSidebarNav} />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <TopNavbar onConnectPlatforms={() => {}} />
+              <main className="flex-1 overflow-y-auto">
+                <div className="mx-auto max-w-7xl p-6 lg:p-8">
+                  <div className="text-sm text-destructive">Error: {error}</div>
+                </div>
+              </main>
+            </div>
           </div>
-        </div>
+        </StatsModeProvider>
       </AuthGuard>
     );
   }
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-background p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Profile</h1>
-              <p className="text-muted-foreground">Manage your account settings and connected platforms</p>
-            </div>
-            <Button onClick={() => setEditDialogOpen(true)} className="gap-2">
-              <Edit className="h-4 w-4" />
-              Edit Profile
-            </Button>
-          </div>
+      <StatsModeProvider>
+        <div className="flex min-h-screen bg-background">
+          <AppSidebar activeTab="profile" onTabChange={handleSidebarNav} />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <TopNavbar onConnectPlatforms={() => {}} />
+            <main className="flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-7xl p-6 lg:p-8">
+                <div className="mx-auto max-w-4xl space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-3xl font-bold text-foreground">Profile</h1>
+                      <p className="text-muted-foreground">Manage your account settings and connected platforms</p>
+                    </div>
+                    <Button onClick={() => setEditDialogOpen(true)} className="gap-2">
+                      <Edit className="h-4 w-4" />
+                      Edit Profile
+                    </Button>
+                  </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="grid gap-6 lg:grid-cols-3">
             {/* Profile Info */}
             <div className="lg:col-span-2 space-y-6">
               <Card>
@@ -437,17 +481,21 @@ function ProfileContent() {
                 </CardContent>
               </Card>
             </div>
+                  </div>
+                </div>
+
+                {/* Profile Edit Dialog */}
+                <ProfileEditDialog
+                  open={editDialogOpen}
+                  onOpenChange={setEditDialogOpen}
+                  profile={profile}
+                  onProfileUpdated={handleProfileUpdated}
+                />
+              </div>
+            </main>
           </div>
         </div>
-        
-        {/* Profile Edit Dialog */}
-        <ProfileEditDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          profile={profile}
-          onProfileUpdated={handleProfileUpdated}
-        />
-      </div>
+      </StatsModeProvider>
     </AuthGuard>
   );
 }
