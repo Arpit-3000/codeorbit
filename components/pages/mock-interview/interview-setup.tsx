@@ -1,17 +1,46 @@
 "use client"
 
-import { useState } from "react"
-import { Upload, FileText, Loader2, Mic, Sparkles } from "lucide-react"
+import { useRef, useState } from "react"
+import { Check, FileText, Loader2, Mic, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { uploadResume, startInterview } from "@/lib/ai-interview-api"
+import { cn } from "@/lib/utils"
+
+export interface InterviewMeta {
+  type: string
+  difficulty: string
+  hasResume: boolean
+}
 
 interface InterviewSetupProps {
-  onStart: (sessionId: string) => void
+  onStart: (sessionId: string, meta?: InterviewMeta) => void
 }
+
+const DOMAINS: { value: string; label: string }[] = [
+  { value: "mixed", label: "a mix of everything" },
+  { value: "dsa", label: "data structures & algorithms" },
+  { value: "react", label: "React" },
+  { value: "node", label: "Node.js" },
+  { value: "cpp_java", label: "C++ and Java" },
+  { value: "dbms", label: "databases" },
+  { value: "os", label: "operating systems" },
+  { value: "cn", label: "computer networks" },
+  { value: "oops", label: "object-oriented design" },
+  { value: "system_design", label: "system design" },
+]
+
+const LEVELS = [
+  { value: "beginner", label: "beginner" },
+  { value: "intermediate", label: "intermediate" },
+  { value: "advanced", label: "advanced" },
+]
+
+/** A select styled as an underlined phrase inside a sentence. */
+const phraseStyle = { fontSize: "inherit", lineHeight: "inherit", fontFamily: "inherit" } as const
+const phrase =
+  "inline-flex h-auto data-[size=default]:h-auto w-auto items-baseline gap-1 rounded-none border-0 border-b-2 border-primary/60 bg-transparent px-0.5 pb-0.5 pt-0 font-[inherit] text-[inherit] leading-[inherit] text-primary shadow-none transition-colors hover:border-primary focus-visible:ring-0 [&_svg]:size-4 [&_svg]:self-center"
 
 export function InterviewSetup({ onStart }: InterviewSetupProps) {
   const [resumeFile, setResumeFile] = useState<File | null>(null)
@@ -21,21 +50,26 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
   const [uploading, setUploading] = useState(false)
   const [starting, setStarting] = useState(false)
   const [hasResume, setHasResume] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (file.type !== "application/pdf") {
-        toast({
-          title: "Invalid file type",
-          description: "Please upload a PDF file",
-          variant: "destructive",
-        })
-        return
-      }
-      setResumeFile(file)
+  const pickFile = (file?: File) => {
+    if (!file) return
+    if (file.type !== "application/pdf") {
+      toast({ title: "Invalid file type", description: "Please upload a PDF file", variant: "destructive" })
+      return
     }
+    setResumeFile(file)
+    setResumePath("")
+    setHasResume(false)
+  }
+
+  const clearResume = () => {
+    setResumeFile(null)
+    setResumePath("")
+    setHasResume(false)
+    if (input.current) input.current.value = ""
   }
 
   const handleUploadResume = async () => {
@@ -48,12 +82,9 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
       if (response.success) {
         setResumePath(response.data.path)
         setHasResume(true)
-        // Auto-set to mixed interview when resume is uploaded
+        // A résumé-based interview always runs as "mixed"
         setInterviewType("mixed")
-        toast({
-          title: "Resume uploaded successfully",
-          description: "Interview will be based on your resume skills",
-        })
+        toast({ title: "Résumé analysed", description: "Questions will be drawn from your skills and projects." })
       } else {
         throw new Error(response.error || "Upload failed")
       }
@@ -78,17 +109,13 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
       })
 
       if (response.success) {
-        onStart(response.data.session_id)
-        toast({
-          title: "Interview started",
-          description: "Get ready to showcase your skills!",
-        })
+        onStart(response.data.session_id, { type: interviewType, difficulty, hasResume })
       } else {
-        throw new Error(response.data as any || "Failed to start")
+        throw new Error((response.data as any) || "Failed to start")
       }
     } catch (error: any) {
       toast({
-        title: "Failed to start interview",
+        title: "Couldn't start the interview",
         description: error.response?.data?.error || error.message || "Please try again",
         variant: "destructive",
       })
@@ -97,198 +124,142 @@ export function InterviewSetup({ onStart }: InterviewSetupProps) {
   }
 
   return (
-    <div className="container mx-auto max-w-6xl p-6 space-y-8">
-      {/* Header */}
-      <div className="text-center space-y-4">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-          <Mic className="w-8 h-8 text-primary" />
-        </div>
-        <h1 className="text-4xl font-bold">AI Mock Interview</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Practice with our AI interviewer powered by advanced language models. 
-          Get real-time feedback and improve your interview skills.
-        </p>
-      </div>
-
-      {/* Feature Cards */}
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <Sparkles className="w-8 h-8 text-primary mb-2" />
-            <CardTitle>AI-Powered</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Advanced AI conducts realistic interviews with contextual follow-up questions
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <Mic className="w-8 h-8 text-primary mb-2" />
-            <CardTitle>Voice Interview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Speak naturally with voice recognition and AI voice responses
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <FileText className="w-8 h-8 text-primary mb-2" />
-            <CardTitle>Resume-Based</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Questions tailored to your resume and coding profile
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Setup Form */}
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>Setup Your Interview</CardTitle>
-          <CardDescription>
-            Upload your resume and select interview preferences
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Resume Upload */}
-          <div className="space-y-2">
-            <Label>Resume (Upload to get personalized interview)</Label>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="resume-upload"
-                />
-                <label
-                  htmlFor="resume-upload"
-                  className="flex items-center justify-center w-full h-12 px-4 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary transition-colors"
-                >
-                  <Upload className="w-5 h-5 mr-2" />
-                  {resumeFile ? resumeFile.name : "Choose PDF file"}
-                </label>
-              </div>
-              {resumeFile && !resumePath && (
-                <Button
-                  onClick={handleUploadResume}
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    "Upload"
-                  )}
-                </Button>
-              )}
-            </div>
-            {resumePath && (
-              <p className="text-sm text-green-600">✓ Resume uploaded - Interview will be based on your skills</p>
-            )}
-            {!resumePath && (
-              <p className="text-xs text-muted-foreground">
-                💡 With resume: AI asks questions based on your skills. Without resume: Choose specific domain below.
-              </p>
-            )}
-          </div>
-
-          {/* Interview Type - Only show if no resume */}
-          {!hasResume && (
-            <div className="space-y-2">
-              <Label>Interview Domain</Label>
+    <div className="mx-auto grid min-h-full max-w-6xl content-center gap-x-20 gap-y-14 px-6 py-16 lg:grid-cols-12 lg:px-10">
+      <div className="space-y-12 lg:col-span-7">
+        <div className="space-y-4">
+          <p className="t-eyebrow flex items-center gap-2">
+            <Mic className="size-3" /> Mock interview
+          </p>
+          <h1 className="t-display text-[2.5rem] leading-[1.18] sm:text-[3.25rem]">
+            Interview me on{" "}
+            {hasResume ? (
+              <span className="text-primary">my résumé</span>
+            ) : (
               <Select value={interviewType} onValueChange={setInterviewType}>
-                <SelectTrigger>
+                <SelectTrigger className={phrase} style={phraseStyle} aria-label="Interview domain">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="dsa">Data Structures & Algorithms</SelectItem>
-                  <SelectItem value="react">React</SelectItem>
-                  <SelectItem value="node">Node.js</SelectItem>
-                  <SelectItem value="cpp_java">C++ / Java</SelectItem>
-                  <SelectItem value="dbms">Database Management</SelectItem>
-                  <SelectItem value="os">Operating Systems</SelectItem>
-                  <SelectItem value="cn">Computer Networks</SelectItem>
-                  <SelectItem value="oops">Object-Oriented Programming</SelectItem>
-                  <SelectItem value="system_design">System Design</SelectItem>
-                  <SelectItem value="mixed">Mixed (All Topics)</SelectItem>
+                  {DOMAINS.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                Select the domain you want to be interviewed on
-              </p>
-            </div>
-          )}
-          
-          {hasResume && (
-            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-              <p className="text-sm text-blue-900 dark:text-blue-100">
-                <strong>Resume-based interview:</strong> Questions will be asked based on the skills and projects mentioned in your resume.
-              </p>
-            </div>
-          )}
-
-          {/* Difficulty */}
-          <div className="space-y-2">
-            <Label>Difficulty Level</Label>
+            )}
+            , at an{" "}
             <Select value={difficulty} onValueChange={setDifficulty}>
-              <SelectTrigger>
+              <SelectTrigger className={phrase} style={phraseStyle} aria-label="Difficulty">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="beginner">Beginner</SelectItem>
-                <SelectItem value="intermediate">Intermediate</SelectItem>
-                <SelectItem value="advanced">Advanced</SelectItem>
+                {LEVELS.map((l) => (
+                  <SelectItem key={l.value} value={l.value}>
+                    {l.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
-            </Select>
-          </div>
+            </Select>{" "}
+            level.
+          </h1>
+        </div>
 
-          {/* Start Button */}
-          <Button
-            className="w-full h-12 text-lg"
-            onClick={handleStartInterview}
-            disabled={starting}
-          >
-            {starting ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Starting Interview...
-              </>
-            ) : (
-              <>
-                <Mic className="w-5 h-5 mr-2" />
-                Start Interview
-              </>
-            )}
+        {/* Résumé */}
+        <div className="space-y-3">
+          <p className="t-eyebrow">Résumé · optional</p>
+          <input
+            ref={input}
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => pickFile(e.target.files?.[0])}
+            className="sr-only"
+            id="resume-upload"
+          />
+          {!resumeFile ? (
+            <label
+              htmlFor="resume-upload"
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragging(false)
+                pickFile(e.dataTransfer.files?.[0])
+              }}
+              className={cn(
+                "flex cursor-pointer items-center gap-4 border-y border-dashed px-1 py-5 transition-colors has-[:focus-visible]:outline-2",
+                dragging ? "border-primary bg-primary-soft" : "border-border-strong hover:border-foreground/40"
+              )}
+            >
+              <FileText className="size-5 text-muted-foreground" />
+              <span className="text-sm">
+                <span className="font-medium">Drop your PDF here</span>
+                <span className="text-muted-foreground"> or click to browse. The interviewer will ask about your actual projects and stack.</span>
+              </span>
+            </label>
+          ) : (
+            <div className="flex items-center gap-4 border-y border-border px-1 py-4">
+              <FileText className="size-5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="truncate font-medium">{resumeFile.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {hasResume ? (
+                    <span className="inline-flex items-center gap-1 text-success">
+                      <Check className="size-3" /> Analysed. Questions will follow your résumé.
+                    </span>
+                  ) : uploading ? (
+                    "Reading your résumé…"
+                  ) : (
+                    "Not analysed yet"
+                  )}
+                </p>
+              </div>
+              {!hasResume && (
+                <Button size="sm" variant="outline" onClick={handleUploadResume} disabled={uploading}>
+                  {uploading && <Loader2 className="animate-spin" />}
+                  {uploading ? "Analysing" : "Analyse"}
+                </Button>
+              )}
+              <Button size="icon-sm" variant="ghost" onClick={clearResume} disabled={uploading} aria-label="Remove résumé">
+                <X />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <Button size="lg" className="h-12 px-7 text-[15px]" onClick={handleStartInterview} disabled={starting || uploading || (!!resumeFile && !hasResume)}>
+            {starting ? <Loader2 className="animate-spin" /> : <Mic />}
+            {starting ? "Starting your interview…" : "Begin interview"}
           </Button>
-        </CardContent>
-      </Card>
+          {resumeFile && !hasResume && !uploading && <p className="text-xs text-muted-foreground">Analyse your résumé first, or remove it to continue without.</p>}
+        </div>
+      </div>
 
-      {/* Information */}
-      <Card className="max-w-2xl mx-auto bg-primary/5">
-        <CardContent className="pt-6">
-          <h3 className="font-semibold mb-2">How it works:</h3>
-          <ol className="space-y-2 text-sm text-muted-foreground">
-            <li>1. <strong>With Resume:</strong> Upload your resume for personalized interview based on your skills</li>
-            <li>2. <strong>Without Resume:</strong> Choose specific domain (React, DSA, etc.) to focus on</li>
-            <li>3. Select difficulty level (Beginner/Intermediate/Advanced)</li>
-            <li>4. Click "Start Interview" to begin with AI interviewer</li>
-            <li>5. Speak your answers using microphone or type them</li>
-            <li>6. Get real-time feedback and detailed report at the end</li>
-          </ol>
-        </CardContent>
-      </Card>
+      {/* What to expect: a sequence, not a feature grid */}
+      <aside className="lg:col-span-5 lg:pt-24" aria-label="What to expect">
+        <ol className="relative space-y-9 border-l border-border-strong pl-8">
+          {[
+            ["The conversation", "Aria asks one question at a time, out loud. Answer by speaking or typing. Her next question depends on how you did."],
+            ["Adaptive difficulty", "Answers are scored as you go. Do well and the questions get harder; struggle and they ease off."],
+            ["The assessment", "End whenever you like and get a written assessment: scores, strengths, gaps, and what to practise next."],
+          ].map(([title, body], i) => (
+            <li key={title} className="relative">
+              <span className="t-num absolute -left-[2.85rem] top-0 flex size-6 items-center justify-center rounded-full border border-border-strong bg-background text-xs text-muted-foreground">
+                {i + 1}
+              </span>
+              <h2 className="text-sm font-medium">{title}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{body}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-10 border-t border-border pt-4 text-xs leading-relaxed text-faint">
+          Voice answers use your microphone. The room listens once Aria finishes each question, and your recording is sent to the AI service to be transcribed. Nothing is captured before the interview starts.
+        </p>
+      </aside>
     </div>
   )
 }

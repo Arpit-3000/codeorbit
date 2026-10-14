@@ -365,7 +365,7 @@ export interface ConnectGithubResponse {
   activityDaysAdded?: number;
 }
 
-// Old method - DEPRECATED (kept for backward compatibility)
+// Connect GitHub by username (public data; no OAuth)
 export const connectGithub = async (username: string): Promise<ConnectGithubResponse> => {
   const res = await api.post("/github/connect", { username });
   return res.data;
@@ -374,6 +374,12 @@ export const connectGithub = async (username: string): Promise<ConnectGithubResp
 // ✅ NEW: GitHub OAuth Methods
 export const connectGithubOAuth = async (code: string): Promise<ConnectGithubResponse> => {
   const res = await api.post("/github/oauth/callback", { code });
+  return res.data;
+};
+
+// Disconnect LeetCode / Codeforces / CodeChef / GFG (GitHub uses disconnectGithub)
+export const disconnectPlatform = async (platform: "leetcode" | "codeforces" | "codechef" | "gfg") => {
+  const res = await api.delete(`/platforms/${platform}`);
   return res.data;
 };
 
@@ -387,8 +393,57 @@ export const refreshGithub = async (): Promise<ConnectGithubResponse> => {
   return res.data;
 };
 
-// ✅ Check GitHub connection status
-export const getGithubStatus = async () => {
+export interface GithubRepo {
+  name: string;
+  description: string;
+  url: string;
+  stars: number;
+  forks: number;
+  language: string | null;
+  languageColor: string | null;
+  pushedAt: string;
+}
+
+export interface GithubProfile {
+  username: string;
+  avatar: string;
+  followers: number;
+  following: number;
+  publicRepos: number;
+  totalStars: number;
+  totalForks?: number;
+  totalContributions: number;
+  connectedAt?: string;
+  name?: string | null;
+  bio?: string | null;
+  company?: string | null;
+  location?: string | null;
+  blog?: string | null;
+  twitter?: string | null;
+  profileUrl?: string;
+  githubCreatedAt?: string;
+  hireable?: boolean | null;
+  publicGists?: number;
+  pullRequestsTotal?: number;
+  issuesTotal?: number;
+  contributions?: { commits: number; pullRequests: number; issues: number; reviews: number; repositories: number; private: number };
+  languages?: { name: string; color: string | null; size: number; percent: number }[];
+  pinned?: GithubRepo[];
+  topRepos?: GithubRepo[];
+  organizations?: { login: string; name: string; avatar: string; url: string }[];
+  lastFetched?: string;
+  /** true when this connection predates the richer data; a refresh imports it */
+  needsRefresh?: boolean;
+  days?: { date: string; count: number }[];
+}
+
+export interface GithubStatusResponse {
+  connected: boolean;
+  github: GithubProfile | null;
+}
+
+// ✅ Check GitHub connection status (and fetch everything we know about the account)
+export const getGithubStatus = async (): Promise<GithubStatusResponse> => {
   const res = await api.get("/github/status");
   return res.data;
 };
@@ -626,6 +681,8 @@ export interface UpdateProfileData {
   };
   profileImage?: string;
   bannerImage?: string;
+  /** a small image as a data URL to use as the profile photo, or null to remove it */
+  photo?: string | null;
 }
 
 export const updateUserProfile = async (data: UpdateProfileData) => {

@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { PlatformMark } from "@/components/ds/primitives"
 import { CheckCircle2, Link2, Loader2, ExternalLink, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { connectLeetCode, verifyLeetCode, connectCodeforces, connectCodeChef, connectGFG } from "@/lib/api"
+import { connectLeetCode, verifyLeetCode, connectCodeforces, connectCodeChef, connectGFG, connectGithub, disconnectPlatform } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { ConnectGithubModal } from "@/components/connect-github-modal"
 
@@ -97,13 +97,6 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
   }, [user])
 
   const handleConnect = async (id: string) => {
-    // ✅ Handle GitHub with OAuth modal
-    if (id === "github") {
-      setGithubModalOpen(true);
-      setEditingId(null);
-      return;
-    }
-
     if (!usernameInput.trim()) return
     
     setConnectingId(id)
@@ -142,6 +135,15 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
           )
         )
         await refreshUser()
+      } else if (id === "github") {
+        const name = usernameInput.trim().replace(/^@/, "")
+        const res = await connectGithub(name)
+        setPlatforms((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, connected: true, username: res.github?.username ?? name } : p
+          )
+        )
+        await refreshUser()
       }
       
       setEditingId(null)
@@ -173,14 +175,21 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
     }
   }
 
-  const handleDisconnect = (id: string) => {
-    setPlatforms((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, connected: false, username: "", needsVerification: false } : p
+  const handleDisconnect = async (id: string) => {
+    setError(null)
+    try {
+      await disconnectPlatform(id as "leetcode" | "codeforces" | "codechef" | "gfg")
+      setPlatforms((prev) =>
+        prev.map((p) =>
+          p.id === id ? { ...p, connected: false, username: "", needsVerification: false } : p
+        )
       )
-    )
-    if (id === "leetcode") {
-      setVerificationCode(null)
+      if (id === "leetcode") {
+        setVerificationCode(null)
+      }
+      await refreshUser()
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Couldn't disconnect. Try again.")
     }
   }
 
@@ -188,192 +197,138 @@ export function ConnectPlatformsModal({ open, onOpenChange }: ConnectPlatformsMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl bg-card border-border sm:max-w-[640px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-foreground">
-            <Link2 className="size-5 text-primary" />
-            Connect Your Coding Profiles
-          </DialogTitle>
-          <DialogDescription className="text-muted-foreground">
-            Link your competitive programming and coding platform accounts to aggregate
-            all your stats in one place.{" "}
-            <span className="font-medium text-primary">{connectedCount}/{platforms.length}</span> connected.
+      <DialogContent className="gap-0 p-0 sm:max-w-[600px]">
+        <DialogHeader className="space-y-1.5 border-b border-border px-6 py-5">
+          <DialogTitle className="t-display text-3xl">Your platforms</DialogTitle>
+          <DialogDescription>
+            <span className="t-num text-foreground">{connectedCount}</span> of {platforms.length} connected. Everything you link is combined into one dashboard.
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle className="size-4" />
-            {error}
-          </div>
-        )}
+        <div className="max-h-[70vh] overflow-y-auto px-6">
+          {error && (
+            <div role="alert" className="mt-4 flex items-start gap-2 border-l-2 border-destructive bg-destructive/8 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {error}
+            </div>
+          )}
 
-        {verificationCode && (
-          <div className="rounded-lg bg-primary/10 p-4 space-y-2">
-            <p className="text-sm font-medium text-foreground">LeetCode Verification Required</p>
-            <p className="text-xs text-muted-foreground">
-              Add this code to your LeetCode profile's "About Me" section:
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 rounded bg-secondary px-3 py-2 font-mono text-sm text-foreground">
-                {verificationCode}
-              </code>
-              <Button
-                size="sm"
-                onClick={() => navigator.clipboard.writeText(verificationCode)}
-                variant="outline"
-              >
-                Copy
+          {verificationCode && (
+            <div className="mt-4 space-y-3 border-l-2 border-warning bg-warning/8 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium">Prove it's your LeetCode account</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Paste this code into the "About Me" section of your LeetCode profile, save, then verify. You can remove it afterwards.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md bg-surface-sunken px-3 py-2 font-mono text-sm">{verificationCode}</code>
+                <Button size="sm" onClick={() => navigator.clipboard.writeText(verificationCode)} variant="outline">
+                  Copy
+                </Button>
+              </div>
+              <Button size="sm" className="w-full" onClick={handleVerifyLeetCode} disabled={connectingId === "leetcode"}>
+                {connectingId === "leetcode" ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    Checking your profile…
+                  </>
+                ) : (
+                  "I've added it. Verify"
+                )}
               </Button>
             </div>
-            <Button
-              size="sm"
-              className="w-full mt-2"
-              onClick={handleVerifyLeetCode}
-              disabled={connectingId === "leetcode"}
-            >
-              {connectingId === "leetcode" ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                "Verify Now"
-              )}
-            </Button>
-          </div>
-        )}
+          )}
 
-        <div className="mt-2 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-          {platforms.map((platform) => (
-            <div
-              key={platform.id}
-              className={cn(
-                "flex items-center justify-between rounded-lg border p-4 transition-all duration-200",
-                platform.connected && !platform.needsVerification
-                  ? "border-primary/20 bg-primary/5"
-                  : platform.needsVerification
-                  ? "border-warning/20 bg-warning/5"
-                  : "border-border bg-secondary/30 hover:border-border hover:bg-secondary/50"
-              )}
-            >
-              <div className="flex items-center gap-3 flex-1">
-                <div className={cn("flex size-10 items-center justify-center rounded-lg bg-secondary font-bold text-xs", platform.color)}>
-                  {platform.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-semibold text-foreground">{platform.name}</h4>
-                    {platform.connected && !platform.needsVerification && (
-                      <Badge variant="secondary" className="gap-1 bg-primary/10 text-primary text-[10px] px-1.5 py-0 border-0">
-                        <CheckCircle2 className="size-2.5" />
-                        Connected
-                      </Badge>
-                    )}
-                    {platform.needsVerification && (
-                      <Badge variant="secondary" className="gap-1 bg-warning/10 text-warning text-[10px] px-1.5 py-0 border-0">
-                        <AlertCircle className="size-2.5" />
-                        Verify
-                      </Badge>
-                    )}
+          <ul className="divide-y divide-border">
+            {platforms.map((platform) => {
+              const linked = platform.connected && !platform.needsVerification
+              return (
+                <li key={platform.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4">
+                  <PlatformMark platform={platform.id} />
+                  <div className="min-w-0 flex-1 basis-40">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium">{platform.name}</h4>
+                      {linked && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-success">
+                          <CheckCircle2 className="size-3" /> Linked
+                        </span>
+                      )}
+                      {platform.needsVerification && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-warning">
+                          <AlertCircle className="size-3" /> Needs verification
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {platform.connected && platform.username ? (
+                        <span className="t-num">@{platform.username}</span>
+                      ) : (
+                        platform.description
+                      )}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{platform.description}</p>
-                  {platform.connected && platform.username && (
-                    <p className="text-xs text-primary/70 font-mono mt-0.5">@{platform.username}</p>
-                  )}
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 ml-3">
-                {platform.connected ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      asChild
-                    >
-                      <a href={`${platform.url}/${platform.username}`} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="size-3.5" />
-                      </a>
-                    </Button>
-                    {/* ✅ For GitHub, open modal to disconnect */}
-                    {platform.id === "github" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        onClick={() => setGithubModalOpen(true)}
-                      >
-                        Manage
-                      </Button>
+                  <div className="flex items-center gap-1.5">
+                    {platform.connected ? (
+                      <>
+                        <Button variant="ghost" size="icon-sm" asChild aria-label={`Open ${platform.name} profile`}>
+                          <a href={`${platform.url}/${platform.username}`} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink />
+                          </a>
+                        </Button>
+                        {/* GitHub is managed through its own OAuth dialog */}
+                        {platform.id === "github" ? (
+                          <Button variant="outline" size="sm" onClick={() => setGithubModalOpen(true)}>
+                            Manage
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => handleDisconnect(platform.id)}>
+                            Disconnect
+                          </Button>
+                        )}
+                      </>
+                    ) : editingId === platform.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={usernameInput}
+                          onChange={(e) => setUsernameInput(e.target.value)}
+                          placeholder="Username"
+                          aria-label={`${platform.name} username`}
+                          autoFocus
+                          className="h-8 w-36"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleConnect(platform.id)
+                            if (e.key === "Escape") setEditingId(null)
+                          }}
+                        />
+                        <Button size="sm" onClick={() => handleConnect(platform.id)} disabled={connectingId === platform.id || !usernameInput.trim()}>
+                          {connectingId === platform.id ? <Loader2 className="animate-spin" /> : "Link"}
+                        </Button>
+                      </div>
                     ) : (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleDisconnect(platform.id)}
+                        onClick={() => {
+                          setEditingId(platform.id)
+                          setUsernameInput("")
+                          setError(null)
+                        }}
                       >
-                        Disconnect
+                        <Link2 /> Connect
                       </Button>
                     )}
-                  </>
-                ) : platform.id === "github" ? (
-                  // ✅ For GitHub, show OAuth button directly
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
-                    onClick={() => handleConnect(platform.id)}
-                  >
-                    <Link2 className="size-3" />
-                    Connect
-                  </Button>
-                ) : editingId === platform.id ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={usernameInput}
-                      onChange={(e) => setUsernameInput(e.target.value)}
-                      placeholder="Username"
-                      className="h-8 w-32 bg-secondary border-border text-sm text-foreground"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleConnect(platform.id)
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                      onClick={() => handleConnect(platform.id)}
-                      disabled={connectingId === platform.id}
-                    >
-                      {connectingId === platform.id ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        "Link"
-                      )}
-                    </Button>
                   </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
-                    onClick={() => {
-                      setEditingId(platform.id)
-                      setUsernameInput("")
-                      setError(null)
-                    }}
-                  >
-                    <Link2 className="size-3" />
-                    Connect
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
+                </li>
+              )
+            })}
+          </ul>
         </div>
 
-        {/* ✅ GitHub OAuth Modal */}
+        <div className="h-4" />
+
+        {/* GitHub OAuth Modal */}
         <ConnectGithubModal
           open={githubModalOpen}
           onOpenChange={setGithubModalOpen}

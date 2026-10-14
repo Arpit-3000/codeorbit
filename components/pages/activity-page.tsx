@@ -1,588 +1,302 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Activity, Calendar, TrendingUp, BarChart3, Code, Trophy, Clock, ExternalLink, Filter } from "lucide-react"
-import { getWeeklyActivity, getAllProblems, getLeetCodeProblems, getCodeforcesProblems } from "@/lib/api"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { ArrowUpRight, X } from "lucide-react"
+import {
+  getAllProblems,
+  getCodeforcesProblems,
+  getDashboardStats,
+  getHeatmap,
+  getLeetCodeProblems,
+  getWeeklyActivity,
+  type AllProblemsData,
+  type DashboardStats,
+  type HeatmapDay,
+  type PlatformProblemsData,
+  type Problem,
+  type WeeklyTrend,
+} from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  PlatformMark,
+  Segmented,
+  Section,
+  Stat,
+} from "@/components/ds/primitives"
+import { YearHeatmap, formatDayKey } from "@/components/dashboard/year-heatmap"
+import { cn } from "@/lib/utils"
 
-interface WeeklyTrend {
-  day: string
-  problems: number
+type PlatformFilter = "all" | "leetcode" | "codeforces"
+const PAGE = 30
+
+/** UTC calendar day key (YYYY-MM-DD) for a timestamp. The heatmap's days are UTC days, so the log uses the same ones. */
+function dayKeyOf(ts: string) {
+  return new Date(ts).toISOString().slice(0, 10)
 }
 
-interface WeeklyActivityData {
-  weeklyTrend: WeeklyTrend[]
+function dayHeading(key: string) {
+  const today = dayKeyOf(new Date().toISOString())
+  const yesterday = dayKeyOf(new Date(Date.now() - 86_400_000).toISOString())
+  if (key === today) return "Today"
+  if (key === yesterday) return "Yesterday"
+  return formatDayKey(key, { weekday: "long", month: "short", day: "numeric" })
 }
 
-interface Problem {
-  id: string
-  title: string
-  titleSlug?: string
-  timestamp: string
-  status?: string
-  language: string
-  runtime?: string
-  memory?: string
-  link: string
-  platform: string
-  contestId?: number
-  index?: string
-  rating?: number
-  tags?: string[]
-}
+function ProblemRow({ p }: { p: Problem }) {
+  const isCF = p.platform.toLowerCase().includes("codeforces")
+  const meta = [
+    p.language,
+    p.runtime,
+    p.memory,
+    isCF && p.contestId ? `Contest ${p.contestId}${p.index ? ` · ${p.index}` : ""}` : null,
+  ].filter(Boolean)
+  const time = new Date(p.timestamp).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
 
-interface AllProblemsData {
-  problems: Problem[]
-  totalProblems: number
-  platformStats: {
-    leetcode: {
-      total: number
-      connected: boolean
-    }
-    codeforces: {
-      total: number
-      connected: boolean
-    }
-  }
-  message: string
-}
-
-interface PlatformProblemsData {
-  problems: Problem[]
-  total: number
-  platform: string
+  return (
+    <li>
+      <a
+        href={p.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group grid grid-cols-[4.25rem_1fr_auto] items-start gap-4 border-b border-border py-3.5 outline-offset-[-2px] sm:grid-cols-[4.25rem_2rem_1fr_auto]"
+      >
+        <span className="t-num pt-0.5 text-xs text-faint">{time}</span>
+        <span className="hidden pt-0.5 sm:block">
+          <PlatformMark platform={p.platform} />
+        </span>
+        <span className="min-w-0 space-y-1">
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-sm font-medium group-hover:text-primary">{p.title}</span>
+            {p.status && p.status.toLowerCase() !== "accepted" && p.status.toLowerCase() !== "ok" && (
+              <span className="text-[11px] text-muted-foreground">{p.status}</span>
+            )}
+            {isCF && p.rating ? <span className="t-num rounded-sm bg-secondary px-1.5 text-[11px] text-muted-foreground">{p.rating}</span> : null}
+          </span>
+          <span className="block text-xs text-muted-foreground">{meta.join(" · ")}</span>
+          {p.tags && p.tags.length > 0 && (
+            <span className="block text-[11px] text-faint">
+              {p.tags.slice(0, 4).join(" · ")}
+              {p.tags.length > 4 ? ` +${p.tags.length - 4}` : ""}
+            </span>
+          )}
+        </span>
+        <ArrowUpRight className="mt-0.5 size-3.5 text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      </a>
+    </li>
+  )
 }
 
 export function ActivityPage() {
-  const [weeklyData, setWeeklyData] = useState<WeeklyTrend[]>([])
-  const [allProblems, setAllProblems] = useState<AllProblemsData | null>(null)
-  const [leetcodeProblems, setLeetcodeProblems] = useState<PlatformProblemsData | null>(null)
-  const [codeforcesProblems, setCodeforcesProblems] = useState<PlatformProblemsData | null>(null)
+  const [heat, setHeat] = useState<HeatmapDay[] | null>(null)
+  const [heatError, setHeatError] = useState<string | null>(null)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [weekly, setWeekly] = useState<WeeklyTrend[]>([])
+  const [all, setAll] = useState<AllProblemsData | null>(null)
+  const [allError, setAllError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState("overview")
+  const [platform, setPlatform] = useState<PlatformFilter>("all")
+  const [perPlatform, setPerPlatform] = useState<Partial<Record<"leetcode" | "codeforces", PlatformProblemsData | "loading" | "error">>>({})
+  const [day, setDay] = useState<string | null>(null)
+  const [visible, setVisible] = useState(PAGE)
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        // Fetch all data in parallel
-        const [weeklyResponse, allProblemsResponse, leetcodeResponse, codeforcesResponse] = await Promise.allSettled([
-          getWeeklyActivity(),
-          getAllProblems(),
-          getLeetCodeProblems(),
-          getCodeforcesProblems()
-        ])
-
-        // Handle weekly activity data
-        if (weeklyResponse.status === 'fulfilled') {
-          setWeeklyData(weeklyResponse.value.weeklyTrend)
-        }
-
-        // Handle all problems data
-        if (allProblemsResponse.status === 'fulfilled') {
-          setAllProblems(allProblemsResponse.value)
-        }
-
-        // Handle LeetCode problems data
-        if (leetcodeResponse.status === 'fulfilled') {
-          setLeetcodeProblems(leetcodeResponse.value)
-        }
-
-        // Handle Codeforces problems data
-        if (codeforcesResponse.status === 'fulfilled') {
-          setCodeforcesProblems(codeforcesResponse.value)
-        }
-
-      } catch (err: any) {
-        console.error("Failed to fetch activity data:", err)
-        setError(err.response?.data?.message || "Failed to load activity data")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchAllData()
+  const load = useCallback(async () => {
+    setLoading(true)
+    setHeatError(null)
+    setAllError(null)
+    const [h, s, w, a] = await Promise.allSettled([getHeatmap(), getDashboardStats(), getWeeklyActivity(), getAllProblems()])
+    if (h.status === "fulfilled") setHeat(h.value.heatmap)
+    else setHeatError(h.reason?.response?.data?.message || "Couldn't load your activity history")
+    if (s.status === "fulfilled") setStats(s.value)
+    if (w.status === "fulfilled") setWeekly(w.value.weeklyTrend)
+    if (a.status === "fulfilled") setAll(a.value)
+    else setAllError(a.reason?.response?.data?.message || "Couldn't load your solved problems")
+    setLoading(false)
   }, [])
 
-  // Auto-switch to overview if current tab becomes unavailable
   useEffect(() => {
-    if (!loading && allProblems) {
-      const availableTabs = ['overview']
-      
-      if (allProblems.totalProblems > 0) {
-        availableTabs.push('all-problems')
-      }
-      
-      if (allProblems.platformStats.leetcode.connected) {
-        availableTabs.push('leetcode')
-      }
-      
-      if (allProblems.platformStats.codeforces.connected) {
-        availableTabs.push('codeforces')
-      }
-      
-      if (!availableTabs.includes(activeTab)) {
-        setActiveTab('overview')
-      }
+    load()
+  }, [load])
+
+  // Platform-specific lists are fetched only when asked for (they re-query the platform).
+  useEffect(() => {
+    if (platform === "all" || perPlatform[platform]) return
+    setPerPlatform((p) => ({ ...p, [platform]: "loading" }))
+    const fn = platform === "leetcode" ? getLeetCodeProblems : getCodeforcesProblems
+    fn()
+      .then((d) => setPerPlatform((p) => ({ ...p, [platform]: d })))
+      .catch(() => setPerPlatform((p) => ({ ...p, [platform]: "error" })))
+  }, [platform, perPlatform])
+
+  useEffect(() => setVisible(PAGE), [platform, day])
+
+  const source: Problem[] | "loading" | "error" = useMemo(() => {
+    if (platform === "all") return all?.problems ?? []
+    const entry = perPlatform[platform]
+    if (!entry || entry === "loading") return "loading"
+    if (entry === "error") return "error"
+    return entry.problems
+  }, [platform, all, perPlatform])
+
+  const filtered = useMemo(() => {
+    if (typeof source === "string") return []
+    const list = [...source].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    return day ? list.filter((p) => dayKeyOf(p.timestamp) === day) : list
+  }, [source, day])
+
+  const groups = useMemo(() => {
+    const out: { key: string; items: Problem[] }[] = []
+    for (const p of filtered.slice(0, visible)) {
+      const k = dayKeyOf(p.timestamp)
+      const last = out[out.length - 1]
+      if (last && last.key === k) last.items.push(p)
+      else out.push({ key: k, items: [p] })
     }
-  }, [allProblems, loading, activeTab])
+    return out
+  }, [filtered, visible])
 
-  const getTotalProblems = () => {
-    return allProblems?.totalProblems || weeklyData.reduce((total, day) => total + day.problems, 0)
-  }
+  const connectedLC = all?.platformStats.leetcode.connected
+  const connectedCF = all?.platformStats.codeforces.connected
+  const filterOptions = [
+    { value: "all" as const, label: `All${all ? ` · ${all.totalProblems}` : ""}` },
+    ...(connectedLC ? [{ value: "leetcode" as const, label: `LeetCode · ${all?.platformStats.leetcode.total ?? 0}` }] : []),
+    ...(connectedCF ? [{ value: "codeforces" as const, label: `Codeforces · ${all?.platformStats.codeforces.total ?? 0}` }] : []),
+  ]
 
-  const getAverageProblems = () => {
-    if (weeklyData.length === 0) return 0
-    return Math.round((weeklyData.reduce((total, day) => total + day.problems, 0) / weeklyData.length) * 10) / 10
-  }
-
-  const getMostActiveDay = () => {
-    if (weeklyData.length === 0) return "N/A"
-    const maxDay = weeklyData.reduce((max, day) => 
-      day.problems > max.problems ? day : max
-    )
-    return `${maxDay.day} (${maxDay.problems} problems)`
-  }
-
-  const getActivityLevel = (problems: number) => {
-    if (problems === 0) return "bg-gray-100 dark:bg-gray-800"
-    if (problems <= 1) return "bg-blue-200 dark:bg-blue-900"
-    if (problems <= 2) return "bg-blue-400 dark:bg-blue-700"
-    if (problems <= 3) return "bg-blue-600 dark:bg-blue-500"
-    return "bg-blue-800 dark:bg-blue-300"
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const getPlatformColor = (platform: string) => {
-    const lower = platform.toLowerCase()
-    if (lower.includes('leetcode')) return 'bg-yellow-500'
-    if (lower.includes('codeforces')) return 'bg-blue-500'
-    if (lower.includes('codechef')) return 'bg-orange-500'
-    return 'bg-gray-500'
-  }
-
-  const getPlatformTextColor = (platform: string) => {
-    const lower = platform.toLowerCase()
-    if (lower.includes('leetcode')) return 'text-yellow-600'
-    if (lower.includes('codeforces')) return 'text-blue-600'
-    if (lower.includes('codechef')) return 'text-orange-600'
-    return 'text-gray-600'
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Activity</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Detailed activity log across all platforms
-          </p>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Activity</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Detailed activity log across all platforms
-          </p>
-        </div>
-        <div className="text-sm text-destructive">Error: {error}</div>
-      </div>
-    )
-  }
+  const weekPeak = Math.max(...weekly.map((w) => w.problems), 1)
+  const weekTotal = weekly.reduce((a, b) => a + b.problems, 0)
+  const pickedCount = day ? heat?.find((h) => h.date === day)?.count : undefined
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Activity</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Detailed activity log and problems solved across all platforms
-        </p>
-      </div>
+    <div className="space-y-14">
+      <PageHeader
+        eyebrow="Activity"
+        title="Your history"
+        description="A running record of what you've solved: the year at a glance, then every submission in order."
+      />
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-auto" style={{ 
-        gridTemplateColumns: `repeat(${
-          1 + // Total Problems always present
-          (allProblems?.platformStats.leetcode.connected ? 1 : 0) + // LeetCode if connected
-          (allProblems?.platformStats.codeforces.connected ? 1 : 0) + // Codeforces if connected
-          1 // Daily Average always present
-        }, 1fr)` 
-      }}>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Problems</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{getTotalProblems()}</div>
-            <p className="text-xs text-muted-foreground">All platforms</p>
-          </CardContent>
-        </Card>
-
-        {allProblems?.platformStats.leetcode.connected && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">LeetCode</CardTitle>
-              <Code className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{allProblems?.platformStats.leetcode.total || 0}</div>
-              <p className="text-xs text-muted-foreground">Connected</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {allProblems?.platformStats.codeforces.connected && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Codeforces</CardTitle>
-              <Trophy className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{allProblems?.platformStats.codeforces.total || 0}</div>
-              <p className="text-xs text-muted-foreground">Connected</p>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Daily Average</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{getAverageProblems()}</div>
-            <p className="text-xs text-muted-foreground">This week</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs for different views */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${
-          1 + // overview always present
-          (allProblems && allProblems.totalProblems > 0 ? 1 : 0) + // all-problems if has problems
-          (allProblems?.platformStats.leetcode.connected ? 1 : 0) + // leetcode if connected
-          (allProblems?.platformStats.codeforces.connected ? 1 : 0) // codeforces if connected
-        }, 1fr)` }}>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          {allProblems && allProblems.totalProblems > 0 && (
-            <TabsTrigger value="all-problems">All Problems</TabsTrigger>
-          )}
-          {allProblems?.platformStats.leetcode.connected && (
-            <TabsTrigger value="leetcode">LeetCode</TabsTrigger>
-          )}
-          {allProblems?.platformStats.codeforces.connected && (
-            <TabsTrigger value="codeforces">Codeforces</TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          {/* Weekly Activity Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Weekly Activity Chart
-              </CardTitle>
-              <CardDescription>
-                Problems solved each day of the week
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis 
-                      dataKey="day" 
-                      className="text-muted-foreground"
-                      fontSize={12}
-                    />
-                    <YAxis 
-                      className="text-muted-foreground"
-                      fontSize={12}
-                    />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        color: 'hsl(var(--foreground))'
-                      }}
-                      formatter={(value) => [`${value} problems`, 'Problems Solved']}
-                    />
-                    <Bar 
-                      dataKey="problems" 
-                      fill="#60a5fa"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Activity Grid */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Weekly Activity Grid
-              </CardTitle>
-              <CardDescription>
-                Visual representation of your daily problem-solving activity
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Days in a straight horizontal line */}
-                <div className="flex justify-between items-center gap-4">
-                  {weeklyData.map((day, index) => (
-                    <div key={index} className="flex flex-col items-center flex-1">
-                      <div className="text-sm font-medium text-muted-foreground mb-2">
-                        {day.day}
-                      </div>
-                      <div 
-                        className={`w-16 h-16 rounded-lg flex items-center justify-center text-lg font-bold ${getActivityLevel(day.problems)} transition-all hover:scale-105`}
-                        title={`${day.day}: ${day.problems} problems`}
-                      >
-                        {day.problems}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        problem{day.problems !== 1 ? 's' : ''}
-                      </div>
-                    </div>
-                  ))}
+      {/* Rhythm: streak figures beside this week */}
+      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-12">
+        <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-4 sm:[&>*+*]:border-l sm:[&>*+*]:pl-6 lg:col-span-8">
+          <Stat label="Current streak" size="lg" value={stats?.currentStreak ?? "—"} unit={stats ? "days" : undefined} tone={stats && stats.currentStreak > 0 ? "primary" : "default"} />
+          <Stat label="Longest" size="lg" value={stats?.longestStreak ?? "—"} unit={stats ? "days" : undefined} />
+          <Stat label="Active days" size="lg" value={stats?.activeDays ?? "—"} hint="past year" />
+          <Stat label="Consistency" size="lg" value={stats?.consistency ?? "—"} unit={stats ? "%" : undefined} hint="past 30 days" />
+        </div>
+        <div className="lg:col-span-4">
+          <p className="t-eyebrow mb-3">Last 7 days · {weekTotal} contributions</p>
+          {weekly.length ? (
+            <div className="flex h-20 items-end gap-2">
+              {weekly.map((w) => (
+                <div key={w.day} className="flex flex-1 flex-col items-center gap-1.5" title={`${w.day}: ${w.problems}`}>
+                  <span
+                    className={cn("w-full rounded-[2px]", w.problems ? "bg-primary" : "bg-heat-0")}
+                    style={{ height: `${Math.max(5, (w.problems / weekPeak) * 56)}px` }}
+                  />
+                  <span className="text-[10px] text-faint">{w.day.slice(0, 1)}</span>
                 </div>
-                
-                {/* Legend */}
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <span>Less</span>
-                  <div className="flex gap-1">
-                    <div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-800"></div>
-                    <div className="w-3 h-3 rounded bg-blue-200 dark:bg-blue-900"></div>
-                    <div className="w-3 h-3 rounded bg-blue-400 dark:bg-blue-700"></div>
-                    <div className="w-3 h-3 rounded bg-blue-600 dark:bg-blue-500"></div>
-                    <div className="w-3 h-3 rounded bg-blue-800 dark:bg-blue-300"></div>
-                  </div>
-                  <span>More</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="all-problems">
-          {allProblems && allProblems.totalProblems > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5" />
-                  All Problems ({allProblems?.totalProblems || 0})
-                </CardTitle>
-                <CardDescription>
-                  Problems solved across all connected platforms
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {allProblems?.problems.map((problem, index) => (
-                    <div key={problem.id} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className={`w-3 h-3 rounded-full ${getPlatformColor(problem.platform)}`}></div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-sm truncate">{problem.title}</h4>
-                            {problem.status && (
-                              <Badge variant="secondary" className="text-xs">
-                                {problem.status}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                            <span className={getPlatformTextColor(problem.platform)}>
-                              {problem.platform}
-                            </span>
-                            <span>{problem.language}</span>
-                            <span>{formatDate(problem.timestamp)}</span>
-                            {problem.runtime && <span>{problem.runtime}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => window.open(problem.link, '_blank')}
-                        className="ml-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
           ) : (
-            <Card>
-              <CardContent className="text-center py-8">
-                <p className="text-muted-foreground">No problems found. Connect your platforms to see your solved problems.</p>
-              </CardContent>
-            </Card>
+            <p className="text-xs text-muted-foreground">{loading ? "Loading…" : "No weekly data yet."}</p>
           )}
-        </TabsContent>
+        </div>
+      </div>
 
-        <TabsContent value="leetcode">
-          {allProblems?.platformStats.leetcode.connected ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5 text-yellow-600" />
-                  LeetCode Problems ({leetcodeProblems?.total || 0})
-                </CardTitle>
-                <CardDescription>
-                  Problems solved on LeetCode platform
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {leetcodeProblems?.problems.map((problem, index) => (
-                    <div key={problem.id} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-sm truncate">{problem.title}</h4>
-                            {problem.status && (
-                              <Badge variant="secondary" className="text-xs">
-                                {problem.status}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                            <span>{problem.language}</span>
-                            <span>{formatDate(problem.timestamp)}</span>
-                            {problem.runtime && <span>{problem.runtime}</span>}
-                            {problem.memory && <span>{problem.memory}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => window.open(problem.link, '_blank')}
-                        className="ml-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )) || (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No LeetCode problems found
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
+      <Section title="The year" aside={day ? undefined : "select a day to filter the log"}>
+        {heatError && !heat ? (
+          <ErrorState compact title={heatError} onRetry={load} />
+        ) : !heat ? (
+          <Skeleton className="h-40 w-full" />
+        ) : heat.every((h) => h.count === 0) ? (
+          <EmptyState compact title="No activity recorded yet" description="Connect a platform and sync to backfill your year." />
+        ) : (
+          <YearHeatmap data={heat} selected={day} onPick={(d) => setDay((cur) => (cur === d.date ? null : d.date))} />
+        )}
+      </Section>
 
-        <TabsContent value="codeforces">
-          {allProblems?.platformStats.codeforces.connected ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Trophy className="h-5 w-5 text-blue-600" />
-                  Codeforces Problems ({codeforcesProblems?.total || 0})
-                </CardTitle>
-                <CardDescription>
-                  Problems solved on Codeforces platform
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {codeforcesProblems?.problems.map((problem, index) => (
-                    <div key={problem.id} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-sm truncate">{problem.title}</h4>
-                            {problem.rating && (
-                              <Badge variant="outline" className="text-xs">
-                                {problem.rating}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                            <span>{problem.language}</span>
-                            <span>{formatDate(problem.timestamp)}</span>
-                            {problem.contestId && <span>Contest {problem.contestId}</span>}
-                            {problem.index && <span>Problem {problem.index}</span>}
-                          </div>
-                          {problem.tags && problem.tags.length > 0 && (
-                            <div className="flex gap-1 mt-2">
-                              {problem.tags.slice(0, 3).map((tag, tagIndex) => (
-                                <Badge key={tagIndex} variant="secondary" className="text-xs">
-                                  {tag}
-                                </Badge>
-                              ))}
-                              {problem.tags.length > 3 && (
-                                <Badge variant="secondary" className="text-xs">
-                                  +{problem.tags.length - 3}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => window.open(problem.link, '_blank')}
-                        className="ml-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )) || (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No Codeforces problems found
-                    </div>
-                  )}
+      <Section
+        variant="bare"
+        title="Log"
+        eyebrow={platform === "all" ? "all platforms" : platform}
+        aside={
+          filterOptions.length > 1 ? (
+            <Segmented label="Platform" size="sm" value={platform} onChange={setPlatform} options={filterOptions} />
+          ) : undefined
+        }
+      >
+        {day && (
+          <div className="mb-4 flex items-center justify-between rounded-md border border-border-strong bg-surface-sunken/60 px-3 py-2 text-sm">
+            <span>
+              <span className="font-medium">{formatDayKey(day, { weekday: "long", month: "long", day: "numeric" })}</span>
+              <span className="ml-2 text-muted-foreground">
+                · {pickedCount ?? 0} contribution{pickedCount === 1 ? "" : "s"}, {filtered.length} problem{filtered.length === 1 ? "" : "s"} in the log
+              </span>
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setDay(null)}>
+              <X /> Clear
+            </Button>
+          </div>
+        )}
+
+        {loading && !all ? (
+          <LoadingState title="Fetching your submissions" description="We read recent accepted solutions straight from LeetCode and Codeforces, so this can take a few seconds." />
+        ) : allError && !all ? (
+          <ErrorState title={allError} description="Your connected platforms may be rate-limiting us. Nothing was changed." onRetry={load} />
+        ) : source === "loading" ? (
+          <LoadingState compact title={`Fetching ${platform} submissions`} />
+        ) : source === "error" ? (
+          <ErrorState compact title={`Couldn't load ${platform} submissions`} onRetry={() => setPerPlatform((p) => ({ ...p, [platform]: undefined }))} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={day ? "No solves logged on this day" : "No submissions yet"}
+            description={
+              day
+                ? "The heatmap counts every kind of contribution (including GitHub), while the log lists solved problems from LeetCode and Codeforces."
+                : "Connect LeetCode or Codeforces to see your solved problems here."
+            }
+            action={
+              day ? (
+                <Button variant="outline" size="sm" onClick={() => setDay(null)}>
+                  Show all days
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent("open-connect-platforms"))}>
+                  Connect a platform
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div>
+            {groups.map((g) => (
+              <div key={g.key}>
+                <div className="sticky top-0 z-10 -mx-1 flex items-baseline justify-between bg-background/95 px-1 py-2 backdrop-blur">
+                  <h3 className="t-eyebrow text-foreground">{dayHeading(g.key)}</h3>
+                  <span className="t-num text-xs text-faint">{g.items.length}</span>
                 </div>
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
-      </Tabs>
+                <ul className="border-t border-border">
+                  {g.items.map((p) => (
+                    <ProblemRow key={`${p.platform}-${p.id}`} p={p} />
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {visible < filtered.length && (
+              <div className="pt-6 text-center">
+                <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + PAGE)}>
+                  Show {Math.min(PAGE, filtered.length - visible)} more
+                  <span className="t-num text-muted-foreground">({filtered.length - visible} left)</span>
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
     </div>
   )
 }

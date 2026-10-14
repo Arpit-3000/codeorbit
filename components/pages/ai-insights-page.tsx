@@ -1,27 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { 
-  Brain, 
-  Target, 
-  TrendingUp, 
-  BookOpen, 
-  Lightbulb, 
-  Clock, 
-  CheckCircle,
-  AlertCircle,
-  ExternalLink,
-  Sparkles
-} from "lucide-react"
-import { 
-  getAIRecommendations,
-  getLearningPathSuggestions,
-  LearningPathSuggestionsData
-} from "@/lib/api"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { ArrowUpRight, Clock, Sparkles } from "lucide-react"
+import { getAIRecommendations, getLearningPathSuggestions, type LearningPathSuggestionsData } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Section,
+  Stat,
+  timeAgo,
+} from "@/components/ds/primitives"
+import { cn } from "@/lib/utils"
 
 interface AIAnalysis {
   dominantTopics: string[]
@@ -58,811 +50,374 @@ interface AIRecommendationsData {
   message: string
 }
 
-export function AIInsightsPage() {
-  const [aiRecommendations, setAIRecommendations] = useState<AIRecommendationsData | null>(null)
-  const [learningPathData, setLearningPathData] = useState<LearningPathSuggestionsData | null>(null)
-  const [loading, setLoading] = useState(false) // Changed to false initially
-  const [learningPathLoading, setLearningPathLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState("overview")
-  const [recommendLoading, setRecommendLoading] = useState(false)
+const AI_CACHE = "ai-recommendations-cache"
+const PATH_CACHE = "learning-path-cache"
+const CACHE_HOURS = 24
 
-  // Load cached data immediately on component mount
-  useEffect(() => {
-    const loadCachedData = () => {
-      try {
-        // Try to load cached AI recommendations from localStorage
-        const cachedAIData = localStorage.getItem('ai-recommendations-cache')
-        if (cachedAIData) {
-          const parsedData = JSON.parse(cachedAIData)
-          // Check if cache is not too old (e.g., less than 1 hour)
-          const cacheTime = new Date(parsedData.cachedAt)
-          const now = new Date()
-          const hoursDiff = (now.getTime() - cacheTime.getTime()) / (1000 * 60 * 60)
-          
-          if (hoursDiff < 24) { // Cache valid for 24 hours
-            setAIRecommendations(parsedData.data)
-          }
-        }
+function readCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const hours = (Date.now() - new Date(parsed.cachedAt).getTime()) / 3_600_000
+    return hours < CACHE_HOURS ? (parsed.data as T) : null
+  } catch (err) {
+    console.error("Failed to load cached data:", err)
+    return null
+  }
+}
 
-        // Try to load cached learning path data
-        const cachedLearningPath = localStorage.getItem('learning-path-cache')
-        if (cachedLearningPath) {
-          const parsedData = JSON.parse(cachedLearningPath)
-          const cacheTime = new Date(parsedData.cachedAt)
-          const now = new Date()
-          const hoursDiff = (now.getTime() - cacheTime.getTime()) / (1000 * 60 * 60)
-          
-          if (hoursDiff < 24) { // Cache valid for 24 hours
-            setLearningPathData(parsedData.data)
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load cached data:", err)
-      }
+function writeCache(key: string, data: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, cachedAt: new Date().toISOString() }))
+  } catch {}
+}
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+/** Priority as a 3-step meter, so it reads without relying on colour. */
+function Priority({ value }: { value: string }) {
+  const n = 3 - (PRIORITY_RANK[value.toLowerCase()] ?? 1)
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={`${value} priority`}>
+      <span className="flex items-end gap-0.5" aria-hidden>
+        {[1, 2, 3].map((i) => (
+          <span key={i} className={cn("w-1 rounded-[1px]", i === 1 ? "h-1.5" : i === 2 ? "h-2.5" : "h-3.5", i <= n ? "bg-primary" : "bg-border-strong")} />
+        ))}
+      </span>
+      {value} priority
+    </span>
+  )
+}
+
+const DIFF_TEXT: Record<string, string> = { easy: "text-easy", medium: "text-medium", hard: "text-hard" }
+
+function openProblem(rec: AIRecommendation) {
+  // Use direct link if provided by backend, otherwise generate URL
+  let url = rec.link || ""
+  if (!url) {
+    const platform = rec.platform.toLowerCase()
+    if (platform === "leetcode") {
+      const slug = rec.title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+      url = `https://leetcode.com/problems/${slug}/`
+    } else if (platform === "codeforces") {
+      url = "https://codeforces.com/problemset"
+    } else {
+      url = `https://${platform}.com`
     }
+  }
+  window.open(url, "_blank", "noopener,noreferrer")
+}
 
-    loadCachedData()
+function Topics({ items, className }: { items: string[]; className?: string }) {
+  return (
+    <ul className={cn("flex flex-wrap gap-x-2 gap-y-1", className)}>
+      {items.map((t) => (
+        <li key={t} className="font-mono text-[11px] text-muted-foreground before:mr-0.5 before:text-faint before:content-['#']">
+          {t}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function AIInsightsPage() {
+  const [recs, setRecs] = useState<AIRecommendationsData | null>(null)
+  const [path, setPath] = useState<LearningPathSuggestionsData | null>(null)
+  const [analysing, setAnalysing] = useState(false)
+  const [pathLoading, setPathLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pathError, setPathError] = useState<string | null>(null)
+
+  // Show the last analysis instantly; it is refreshed on demand.
+  useEffect(() => {
+    setRecs(readCache<AIRecommendationsData>(AI_CACHE))
+    setPath(readCache<LearningPathSuggestionsData>(PATH_CACHE))
   }, [])
 
-  const fetchLearningPath = async () => {
+  const analyse = useCallback(async () => {
     try {
-      setLearningPathLoading(true)
+      setAnalysing(true)
       setError(null)
-      
-      const learningPathResponse = await getLearningPathSuggestions()
-      setLearningPathData(learningPathResponse)
-      
-      // Cache the learning path data
-      localStorage.setItem('learning-path-cache', JSON.stringify({
-        data: learningPathResponse,
-        cachedAt: new Date().toISOString()
-      }))
-      
-    } catch (err: any) {
-      console.error("Failed to fetch learning path:", err)
-      setError(err.response?.data?.message || "Failed to load learning path")
-    } finally {
-      setLearningPathLoading(false)
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority.toLowerCase()) {
-      case 'high': return 'bg-red-500'
-      case 'medium': return 'bg-yellow-500'
-      case 'low': return 'bg-green-500'
-      default: return 'bg-gray-500'
-    }
-  }
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty.toLowerCase()) {
-      case 'easy': return 'text-green-600 bg-green-100 dark:bg-green-900'
-      case 'medium': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900'
-      case 'hard': return 'text-red-600 bg-red-100 dark:bg-red-900'
-      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-900'
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const handleRecommendMore = async () => {
-    try {
-      setRecommendLoading(true)
-      setError(null)
-      
-      // Fetch fresh AI recommendations
-      const freshRecommendations = await getAIRecommendations()
-      setAIRecommendations(freshRecommendations)
-      
-      // Cache the fresh data
-      localStorage.setItem('ai-recommendations-cache', JSON.stringify({
-        data: freshRecommendations,
-        cachedAt: new Date().toISOString()
-      }))
-      
-      // Switch to recommendations tab to show new results
-      setActiveTab("recommendations")
-      
-    } catch (err: any) {
-      console.error("Failed to fetch new recommendations:", err)
-      setError(err.response?.data?.message || "Failed to get new recommendations")
-    } finally {
-      setRecommendLoading(false)
-    }
-  }
-
-  // New function to refresh all data
-  const handleRefreshData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Fetch fresh AI recommendations
-      const aiResponse = await getAIRecommendations()
-      setAIRecommendations(aiResponse)
-      
-      // Cache the fresh data
-      localStorage.setItem('ai-recommendations-cache', JSON.stringify({
-        data: aiResponse,
-        cachedAt: new Date().toISOString()
-      }))
-
+      const data = await getAIRecommendations()
+      setRecs(data)
+      writeCache(AI_CACHE, data)
     } catch (err: any) {
       console.error("Failed to refresh AI insights:", err)
-      setError(err.response?.data?.message || "Failed to refresh AI insights")
+      setError(err.response?.data?.message || "The analysis couldn't be completed")
     } finally {
-      setLoading(false)
+      setAnalysing(false)
     }
-  }
+  }, [])
 
-  const handleOpenProblem = (recommendation: AIRecommendation) => {
-    // Use direct link if provided by backend, otherwise generate URL
-    let problemUrl = recommendation.link || ""
-    
-    if (!problemUrl) {
-      // Generate problem URL based on platform and title
-      if (recommendation.platform.toLowerCase() === "leetcode") {
-        // Convert title to slug format (lowercase, replace spaces with hyphens)
-        const slug = recommendation.title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s]/g, '') // Remove special characters
-          .replace(/\s+/g, '-') // Replace spaces with hyphens
-          .replace(/-+/g, '-') // Replace multiple hyphens with single
-          .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
-        
-        problemUrl = `https://leetcode.com/problems/${slug}/`
-      } else if (recommendation.platform.toLowerCase() === "codeforces") {
-        // For Codeforces, we'd need contest ID and problem index
-        // For now, redirect to problemset
-        problemUrl = "https://codeforces.com/problemset"
-      } else {
-        // Default to platform's main page
-        problemUrl = `https://${recommendation.platform.toLowerCase()}.com`
-      }
+  const buildPath = useCallback(async () => {
+    try {
+      setPathLoading(true)
+      setPathError(null)
+      const data = await getLearningPathSuggestions()
+      setPath(data)
+      writeCache(PATH_CACHE, data)
+    } catch (err: any) {
+      console.error("Failed to fetch learning path:", err)
+      setPathError(err.response?.data?.message || "Couldn't build the roadmap")
+    } finally {
+      setPathLoading(false)
     }
-    
-    // Open in new tab
-    window.open(problemUrl, '_blank', 'noopener,noreferrer')
-  }
+  }, [])
 
-  if (loading && !aiRecommendations) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="size-5 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Personalized recommendations and learning insights powered by AI
-          </p>
-        </div>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </div>
-    )
-  }
+  const sorted = useMemo(
+    () => [...(recs?.recommendations ?? [])].sort((a, b) => (PRIORITY_RANK[a.priority.toLowerCase()] ?? 1) - (PRIORITY_RANK[b.priority.toLowerCase()] ?? 1)),
+    [recs]
+  )
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="size-5 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Personalized recommendations and learning insights powered by AI
-          </p>
-        </div>
-        <div className="text-sm text-destructive">Error: {error}</div>
-      </div>
-    )
-  }
+  const maxTopic = Math.max(...(path?.analysis.topicDistribution.map((t) => t.count) ?? [1]), 1)
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="size-5 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">AI Insights</h1>
-            {loading && aiRecommendations && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
-                <span>Refreshing...</span>
-              </div>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Personalized recommendations and learning insights powered by AI
-            {aiRecommendations && !loading && (
-              <span className="ml-2 text-xs opacity-60">
-                • Last updated: {formatDate(aiRecommendations.generatedAt)}
-              </span>
-            )}
-          </p>
-        </div>
-        <Button 
-          onClick={handleRefreshData}
-          disabled={loading}
-          variant="outline"
-          className="flex items-center gap-2"
-        >
-          {loading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}
-          {loading ? "Refreshing..." : "Refresh Data"}
-        </Button>
-      </div>
+    <div className="space-y-16">
+      <PageHeader
+        eyebrow="Smart Insights"
+        title={
+          <>
+            What to work on <span className="text-primary">next</span>
+          </>
+        }
+        description="CodeOrbit reads your recent solves, finds the pattern in them, and picks problems that close the gaps."
+        actions={
+          <Button variant={recs ? "outline" : "default"} onClick={analyse} disabled={analysing}>
+            <Sparkles className={cn(analysing && "animate-pulse")} />
+            {analysing ? "Analysing…" : recs ? "Re-analyse" : "Analyse my activity"}
+          </Button>
+        }
+      />
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
-          <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
-        </TabsList>
+      {error && (
+        <ErrorState
+          compact
+          title={error}
+          description={recs ? "Showing your last analysis below." : "Nothing has been changed. Make sure a platform with recent solves is connected."}
+          onRetry={analyse}
+        />
+      )}
 
-        <TabsContent value="overview" className="space-y-4">
-          {/* No data state */}
-          {!aiRecommendations && !loading && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center h-64 text-center">
-                <Brain className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No AI Insights Available</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Click "Refresh Data" to generate your personalized AI insights and recommendations.
-                </p>
-                <Button onClick={handleRefreshData} className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Generate Insights
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+      {!recs && !analysing && !error && (
+        <EmptyState
+          icon={<Sparkles className="size-4" />}
+          title="No analysis yet"
+          description="Run one and you'll get a read on your solving pattern, the topics you're avoiding, and a short list of problems chosen for you."
+          action={<Button onClick={analyse}><Sparkles /> Analyse my activity</Button>}
+        />
+      )}
 
-          {/* Analysis Summary */}
-          {aiRecommendations && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Current Level</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold capitalize">{aiRecommendations.analysis.currentDifficultyLevel}</div>
-                  <p className="text-xs text-muted-foreground">Difficulty level</p>
-                </CardContent>
-              </Card>
+      {analysing && !recs && (
+        <LoadingState
+          title="Reading your recent submissions"
+          description="Fetching your latest solves, grouping them by topic and difficulty, then choosing what to recommend. Usually 5 to 15 seconds."
+        />
+      )}
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Dominant Topics</CardTitle>
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{aiRecommendations.analysis.dominantTopics.length}</div>
-                  <p className="text-xs text-muted-foreground">Strong areas</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Based on Problems</CardTitle>
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{aiRecommendations.basedOnProblems}</div>
-                  <p className="text-xs text-muted-foreground">Problems analyzed</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Last Updated</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatDate(aiRecommendations.generatedAt)}</div>
-                  <p className="text-xs text-muted-foreground">Analysis date</p>
-                </CardContent>
-              </Card>
+      {recs && (
+        <div className={cn("space-y-16 transition-opacity", analysing && "opacity-50")} aria-busy={analysing}>
+          {/* 1. What the analysis sees */}
+          <section aria-labelledby="reading" className="grid gap-x-12 gap-y-8 lg:grid-cols-12">
+            <div className="space-y-6 lg:col-span-8">
+              <p id="reading" className="t-eyebrow">
+                The reading · {recs.basedOnProblems} solves · {timeAgo(recs.generatedAt)}
+              </p>
+              <p className="font-display text-3xl font-medium leading-[1.2] tracking-[-0.03em] sm:text-[2.25rem]">
+                You're solving at <span className="capitalize text-primary">{recs.analysis.currentDifficultyLevel}</span> level
+                {recs.analysis.dominantTopics.length > 0 && (
+                  <>
+                    , leaning on{" "}
+                    <span className="text-primary">{recs.analysis.dominantTopics.slice(0, 3).join(", ")}</span>
+                  </>
+                )}
+                .
+              </p>
+              <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground">{recs.analysis.solvingPattern}</p>
             </div>
-          )}
-
-          {/* Analysis Details */}
-          {aiRecommendations && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5" />
-                    Analysis Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-2">Dominant Topics</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {aiRecommendations.analysis.dominantTopics.map((topic, index) => (
-                        <Badge key={index} variant="secondary">
-                          {topic}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-medium mb-2">Solving Pattern</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {aiRecommendations.analysis.solvingPattern}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5" />
-                    Identified Gaps
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {aiRecommendations.analysis.identifiedGaps.map((gap, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                        <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                        <span className="text-sm">{gap}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Learning Path */}
-          {aiRecommendations && aiRecommendations.learningPath && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Learning Path
-                </CardTitle>
-                <CardDescription>
-                  Current Focus: {aiRecommendations.learningPath.currentFocus}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <Target className="w-4 h-4 text-primary" />
-                      Next Milestone
-                    </h4>
-                    <p className="text-sm text-muted-foreground p-3 rounded-lg bg-primary/5 border border-primary/20">
-                      {aiRecommendations.learningPath.nextMilestone}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-green-500" />
-                      Suggested Study Order
-                    </h4>
-                    <div className="space-y-2">
-                      {aiRecommendations.learningPath.suggestedStudyOrder.map((step, index) => (
-                        <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-medium flex-shrink-0 mt-0.5">
-                            {index + 1}
-                          </div>
-                          <span className="text-sm">{step}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="recommendations" className="space-y-4">
-          {/* No data state */}
-          {!aiRecommendations && !loading && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center h-64 text-center">
-                <Lightbulb className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Recommendations Available</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Generate AI insights first to get personalized problem recommendations.
-                </p>
-                <Button onClick={handleRefreshData} className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Generate Recommendations
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {aiRecommendations && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Lightbulb className="h-5 w-5" />
-                      AI-Powered Recommendations
-                    </CardTitle>
-                    <CardDescription>
-                      Personalized problem recommendations based on your solving patterns
-                    </CardDescription>
-                  </div>
-                  <Button 
-                    onClick={handleRecommendMore}
-                    disabled={recommendLoading}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-2"
-                  >
-                    {recommendLoading ? (
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
-                    ) : (
-                      <Sparkles className="h-3 w-3" />
-                    )}
-                    {recommendLoading ? "Loading..." : "Get More"}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {aiRecommendations.recommendations.map((rec, index) => (
-                    <div key={index} className="p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold">{rec.title}</h4>
-                            <Badge variant="outline" className={getDifficultyColor(rec.difficulty)}>
-                              {rec.difficulty}
-                            </Badge>
-                            <div className={`w-2 h-2 rounded-full ${getPriorityColor(rec.priority)}`}></div>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{rec.reasoning}</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {rec.estimatedTime}
-                            </span>
-                            <span>{rec.platform}</span>
-                          </div>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleOpenProblem(rec)}
-                          className="flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Open
-                        </Button>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground">Topics:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {rec.topics.map((topic, topicIndex) => (
-                              <Badge key={topicIndex} variant="secondary" className="text-xs">
-                                {topic}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground">Learning Objective:</span>
-                          <p className="text-xs text-muted-foreground mt-1">{rec.learningObjective}</p>
-                        </div>
-                      </div>
-                    </div>
+            <div className="space-y-4 lg:col-span-4">
+              <p className="t-eyebrow">Gaps it found</p>
+              {recs.analysis.identifiedGaps.length ? (
+                <ul className="space-y-2.5 border-l-2 border-primary pl-4">
+                  {recs.analysis.identifiedGaps.map((g) => (
+                    <li key={g} className="text-sm leading-snug">{g}</li>
                   ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No clear gaps. Your coverage looks balanced.</p>
+              )}
+            </div>
+          </section>
+
+          {/* 2. What to do about it */}
+          <Section title="Work on next" aside={`${sorted.length} picks, highest priority first`}>
+            {sorted.length === 0 ? (
+              <EmptyState compact title="No recommendations returned" description="Try re-analysing after a few more solves." />
+            ) : (
+              <ol className="divide-y divide-border">
+                {sorted.map((rec, i) => (
+                  <li key={`${rec.title}-${i}`} className="grid gap-x-8 gap-y-4 py-6 lg:grid-cols-12">
+                    <div className="flex gap-4 lg:col-span-8">
+                      <span className="t-num w-6 shrink-0 pt-1 text-sm text-faint">{String(i + 1).padStart(2, "0")}</span>
+                      <div className="min-w-0 space-y-3">
+                        <div className="space-y-1">
+                          <p className="text-sm leading-relaxed text-muted-foreground">
+                            <span className="t-eyebrow mr-2 align-middle">Because</span>
+                            {rec.reasoning}
+                          </p>
+                          <h3 className="text-lg font-medium tracking-tight">{rec.title}</h3>
+                        </div>
+                        <p className="max-w-xl text-[13px] leading-relaxed">
+                          <span className="text-faint">You'll practise: </span>
+                          {rec.learningObjective}
+                        </p>
+                        <Topics items={rec.topics} />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pl-10 lg:col-span-4 lg:flex-col lg:items-end lg:gap-2 lg:pl-0">
+                      <Priority value={rec.priority} />
+                      <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className={cn("font-medium capitalize", DIFF_TEXT[rec.difficulty.toLowerCase()])}>{rec.difficulty}</span>
+                        <span>{rec.platform}</span>
+                        <span className="flex items-center gap-1"><Clock className="size-3" />{rec.estimatedTime}</span>
+                      </span>
+                      <Button variant="outline" size="sm" onClick={() => openProblem(rec)}>
+                        Open problem <ArrowUpRight />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
+
+          {/* 3. Where it leads */}
+          {recs.learningPath && (
+            <Section title="Where this leads" eyebrow="direction">
+              <div className="grid gap-x-12 gap-y-8 lg:grid-cols-12">
+                <div className="space-y-6 lg:col-span-5">
+                  <Stat label="Current focus" size="sm" value={recs.learningPath.currentFocus} className="[&>p:nth-child(2)]:font-sans [&>p:nth-child(2)]:text-xl [&>p:nth-child(2)]:leading-snug" />
+                  <div className="space-y-1.5">
+                    <p className="t-eyebrow">Next milestone</p>
+                    <p className="text-[15px] leading-relaxed">{recs.learningPath.nextMilestone}</p>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="learning-path" className="space-y-4">
-          {!learningPathData && !learningPathLoading && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Personalized Learning Path
-                </CardTitle>
-                <CardDescription>
-                  Get a detailed learning roadmap based on your problem-solving patterns
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button 
-                  onClick={fetchLearningPath}
-                  className="flex items-center gap-2"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Generate Learning Path
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {learningPathLoading && (
-            <Card>
-              <CardContent className="flex items-center justify-center h-32">
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                  <span>Generating your personalized learning path...</span>
+                <div className="lg:col-span-7">
+                  <p className="t-eyebrow mb-3">Suggested study order</p>
+                  <ol className="relative space-y-4 border-l border-border-strong pl-6">
+                    {recs.learningPath.suggestedStudyOrder.map((step, i) => (
+                      <li key={step} className="relative text-sm leading-relaxed">
+                        <span className="t-num absolute -left-[2.15rem] top-0 flex size-5 items-center justify-center rounded-full border border-border-strong bg-background text-[10px] text-muted-foreground">
+                          {i + 1}
+                        </span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {learningPathData && (
-            <div className="space-y-4">
-              {/* Learning Path Overview */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Current Level</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold capitalize">{learningPathData.learningPath.currentLevel}</div>
-                    <p className="text-xs text-muted-foreground">Your skill level</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Duration</CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{learningPathData.learningPath.estimatedDuration}</div>
-                    <p className="text-xs text-muted-foreground">Estimated time</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Learning Phases</CardTitle>
-                    <Target className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{learningPathData.learningPath.totalPhases}</div>
-                    <p className="text-xs text-muted-foreground">Structured phases</p>
-                  </CardContent>
-                </Card>
               </div>
+            </Section>
+          )}
+        </div>
+      )}
 
-              {/* User Profile Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5" />
-                    Your Profile Analysis
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <h4 className="font-medium mb-2">Problem Solving Stats</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Solved:</span>
-                          <span className="font-medium">{learningPathData.userProfile.totalSolved}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">LeetCode Rating:</span>
-                          <span className="font-medium">{learningPathData.userProfile.leetcodeRating || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Codeforces Rating:</span>
-                          <span className="font-medium">{learningPathData.userProfile.codeforcesRating || 'N/A'}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Strong Topics</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {learningPathData.userProfile.dominantTopics.map((topic, index) => (
-                          <Badge key={index} variant="secondary">
-                            {topic}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
+      {/* 4. Full roadmap, built on request */}
+      <Section
+        title="Full roadmap"
+        eyebrow="phases · milestones"
+        aside={
+          path && (
+            <Button variant="ghost" size="sm" onClick={buildPath} disabled={pathLoading}>
+              {pathLoading ? "Rebuilding…" : "Rebuild"}
+            </Button>
+          )
+        }
+      >
+        {pathError && <ErrorState compact title={pathError} onRetry={buildPath} className="mb-6" />}
+
+        {!path && !pathLoading && (
+          <EmptyState
+            compact
+            title="A phase-by-phase plan"
+            description="Turn the reading above into a structured roadmap with durations, goals and milestones for each phase."
+            action={<Button variant="outline" size="sm" onClick={buildPath}><Sparkles /> Build my roadmap</Button>}
+          />
+        )}
+        {pathLoading && !path && <LoadingState compact title="Building your roadmap" description="Mapping your topic coverage onto a plan." />}
+
+        {path && (
+          <div className={cn("space-y-14", pathLoading && "opacity-50")}>
+            <div className="grid grid-cols-2 gap-6 sm:grid-cols-4 sm:[&>*+*]:border-l sm:[&>*+*]:pl-6">
+              <Stat label="Level" size="sm" value={<span className="capitalize">{path.learningPath.currentLevel}</span>} />
+              <Stat label="Duration" size="sm" value={path.learningPath.estimatedDuration} />
+              <Stat label="Phases" size="sm" value={path.learningPath.totalPhases} />
+              <Stat label="Solved" size="sm" value={path.userProfile.totalSolved} hint={`LC ${path.userProfile.leetcodeRating || "—"} · CF ${path.userProfile.codeforcesRating || "—"}`} />
+            </div>
+
+            <ol className="space-y-0">
+              {path.learningPath.phases.map((phase, i) => (
+                <li key={phase.phase} className="grid gap-x-10 gap-y-4 border-t border-border py-7 lg:grid-cols-12">
+                  <div className="lg:col-span-3">
+                    <p className="t-num text-sm text-primary">Phase {i + 1}</p>
+                    <h3 className="mt-1 text-base font-medium">{phase.phase}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{phase.duration} · {phase.focus}</p>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Learning Phases */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5" />
-                    Learning Phases
-                  </CardTitle>
-                  <CardDescription>
-                    Structured approach to improve your problem-solving skills
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {learningPathData.learningPath.phases.map((phase, index) => (
-                      <div key={index} className="relative">
-                        {index < learningPathData.learningPath.phases.length - 1 && (
-                          <div className="absolute left-4 top-8 w-0.5 h-full bg-border"></div>
-                        )}
-                        <div className="flex gap-4">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-medium flex-shrink-0">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1 space-y-3">
-                            <div>
-                              <h4 className="font-semibold text-lg">{phase.phase}</h4>
-                              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {phase.duration}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Target className="w-3 h-3" />
-                                  {phase.focus}
-                                </span>
-                              </div>
-                            </div>
-                            
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div>
-                                <h5 className="font-medium text-sm mb-2">Topics to Focus</h5>
-                                <div className="flex flex-wrap gap-1">
-                                  {phase.topics.map((topic, topicIndex) => (
-                                    <Badge key={topicIndex} variant="outline" className="text-xs">
-                                      {topic}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <h5 className="font-medium text-sm mb-2">Goals</h5>
-                                <ul className="space-y-1">
-                                  {phase.goals.map((goal, goalIndex) => (
-                                    <li key={goalIndex} className="text-xs text-muted-foreground flex items-start gap-2">
-                                      <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
-                                      {goal}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <h5 className="font-medium text-sm mb-2">Milestones</h5>
-                              <div className="space-y-1">
-                                {phase.milestones.map((milestone, milestoneIndex) => (
-                                  <div key={milestoneIndex} className="text-xs text-muted-foreground p-2 rounded bg-muted/50 flex items-center gap-2">
-                                    <Target className="w-3 h-3 text-primary flex-shrink-0" />
-                                    {milestone}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="space-y-4 lg:col-span-5">
+                    <p className="t-eyebrow">Goals</p>
+                    <ul className="space-y-2 text-sm">
+                      {phase.goals.map((g) => (
+                        <li key={g} className="flex gap-2.5"><span className="mt-2 size-1 shrink-0 rounded-full bg-foreground" />{g}</li>
+                      ))}
+                    </ul>
+                    <Topics items={phase.topics} />
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Next Steps */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Lightbulb className="h-5 w-5" />
-                    Next Steps
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {learningPathData.learningPath.nextSteps.map((step, index) => (
-                      <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
-                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-2"></div>
-                        <span className="text-sm">{step}</span>
-                      </div>
-                    ))}
+                  <div className="space-y-2 lg:col-span-4">
+                    <p className="t-eyebrow">Done when</p>
+                    <ul className="space-y-2 text-sm text-muted-foreground">
+                      {phase.milestones.map((m) => (
+                        <li key={m} className="border-l-2 border-border-strong pl-3">{m}</li>
+                      ))}
+                    </ul>
                   </div>
-                </CardContent>
-              </Card>
+                </li>
+              ))}
+            </ol>
 
-              {/* Topic Distribution Analysis */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Topic Distribution Analysis
-                  </CardTitle>
-                  <CardDescription>
-                    Based on {learningPathData.analysis.totalProblemsAnalyzed} problems analyzed
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {learningPathData.analysis.topicDistribution.map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <div className="flex items-center gap-3">
-                          <Badge variant="secondary">{item.topic}</Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {item.count} problems
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-primary rounded-full"
-                              style={{ 
-                                width: `${(item.count / Math.max(...learningPathData.analysis.topicDistribution.map(t => t.count))) * 100}%` 
-                              }}
-                            ></div>
-                          </div>
-                          <span className="text-xs text-muted-foreground w-8 text-right">
-                            {Math.round((item.count / learningPathData.analysis.totalProblemsAnalyzed) * 100)}%
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Refresh Button */}
-              <div className="flex justify-center">
-                <Button 
-                  onClick={fetchLearningPath}
-                  disabled={learningPathLoading}
-                  variant="outline"
-                  className="flex items-center gap-2"
-                >
-                  {learningPathLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  {learningPathLoading ? "Generating..." : "Refresh Learning Path"}
-                </Button>
+            <div className="grid gap-x-12 gap-y-10 lg:grid-cols-2">
+              <div>
+                <p className="t-eyebrow mb-4">Topic coverage · {path.analysis.totalProblemsAnalyzed} problems</p>
+                <ul className="space-y-2.5">
+                  {path.analysis.topicDistribution.map((t) => (
+                    <li key={t.topic} className="grid grid-cols-[7rem_1fr_2.5rem] items-center gap-3 text-xs">
+                      <span className="truncate text-muted-foreground">{t.topic}</span>
+                      <span className="h-1.5 rounded-sm bg-surface-sunken">
+                        <span className="animate-draw-bar block h-full rounded-sm bg-primary" style={{ width: `${(t.count / maxTopic) * 100}%` }} />
+                      </span>
+                      <span className="t-num text-right text-faint">{t.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="t-eyebrow mb-4">Immediate next steps</p>
+                <ol className="space-y-3 text-sm">
+                  {path.learningPath.nextSteps.map((s, i) => (
+                    <li key={s} className="flex gap-3">
+                      <span className="t-num text-faint">{i + 1}.</span>
+                      {s}
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          </div>
+        )}
+      </Section>
     </div>
   )
 }

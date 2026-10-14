@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { Github, ExternalLink, Loader2, Check, X } from 'lucide-react';
+import { Github, ExternalLink, Loader2, Check, RefreshCw, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,15 +10,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { StatusDot } from '@/components/ds/primitives';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { disconnectGithub, refreshGithub } from '@/lib/api';
+import { connectGithub, disconnectGithub, refreshGithub } from '@/lib/api';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-
-const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
-const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
-// Use API route as callback - GitHub will call this, which redirects to the page
-const REDIRECT_URI = `${FRONTEND_URL}/api/auth/callback/github`;
 
 interface GitHubData {
   username: string;
@@ -46,41 +43,45 @@ export function ConnectGithubModal({
 }: ConnectGithubModalProps) {
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<'connect' | 'disconnect' | 'refresh' | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
-  const handleConnect = () => {
-    console.log('[GITHUB OAUTH] Initiating OAuth flow');
-    console.log('[GITHUB OAUTH] Client ID:', GITHUB_CLIENT_ID ? 'Present' : 'Missing');
-    console.log('[GITHUB OAUTH] Redirect URI:', REDIRECT_URI);
+  const [username, setUsername] = useState('');
+  const [connectError, setConnectError] = useState<string | null>(null);
 
-    if (!GITHUB_CLIENT_ID || GITHUB_CLIENT_ID === 'YOUR_GITHUB_CLIENT_ID_HERE') {
-      toast({
-        title: 'Configuration Error',
-        description: 'GitHub Client ID not configured. Please add NEXT_PUBLIC_GITHUB_CLIENT_ID to .env.local',
-        variant: 'destructive',
-      });
+  const cleaned = username.trim().replace(/^@/, '');
+  const validFormat = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(cleaned);
+
+  const handleConnect = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!validFormat) {
+      setConnectError('Enter a valid GitHub username: letters, numbers and single hyphens, up to 39 characters.');
       return;
     }
-
-    // Build GitHub OAuth URL
-    const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
-    githubAuthUrl.searchParams.set('client_id', GITHUB_CLIENT_ID);
-    githubAuthUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-    githubAuthUrl.searchParams.set('scope', 'read:user,repo');
-    githubAuthUrl.searchParams.set('state', Math.random().toString(36).substring(7)); // CSRF protection
-
-    console.log('[GITHUB OAUTH] Redirecting to:', githubAuthUrl.toString());
-
-    // Redirect to GitHub
-    window.location.href = githubAuthUrl.toString();
+    try {
+      setLoading(true);
+      setAction('connect');
+      setConnectError(null);
+      const res = await connectGithub(cleaned);
+      toast({
+        title: 'GitHub connected',
+        description: `Linked @${res.github?.username ?? cleaned} and imported your contributions.`,
+      });
+      setUsername('');
+      onUpdate();
+      onOpenChange(false);
+    } catch (error: any) {
+      console.error('[GITHUB] Connect failed:', error);
+      setConnectError(
+        error.response?.data?.message ||
+          (error.message === 'Network Error' ? "Can't reach the CodeOrbit server. Is the backend running?" : 'Failed to connect GitHub')
+      );
+    } finally {
+      setLoading(false);
+      setAction(null);
+    }
   };
 
   const handleDisconnect = async () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to disconnect GitHub? This will remove all your GitHub data.'
-    );
-
-    if (!confirmed) return;
-
     try {
       setLoading(true);
       setAction('disconnect');
@@ -107,6 +108,7 @@ export function ConnectGithubModal({
     } finally {
       setLoading(false);
       setAction(null);
+      setConfirmDisconnect(false);
     }
   };
 
@@ -140,152 +142,133 @@ export function ConnectGithubModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Github className="h-5 w-5" />
-            GitHub Connection
-          </DialogTitle>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) setConfirmDisconnect(false); onOpenChange(o); }}>
+      <DialogContent className="gap-0 p-0 sm:max-w-md">
+        <DialogHeader className="space-y-1.5 border-b border-border px-6 py-5">
+          <DialogTitle className="t-display text-3xl">GitHub</DialogTitle>
           <DialogDescription>
-            {githubData 
-              ? 'Manage your GitHub connection' 
-              : 'Connect your GitHub account to track contributions'}
+            {githubData ? 'Your connection and what we have stored from it.' : 'Type your username to add your repositories, stars and contribution history.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 px-6 py-6">
           {!githubData ? (
-            // Not Connected State
-            <div className="space-y-4">
-              <div className="flex flex-col items-center gap-4 py-6 text-center">
-                <div className="p-4 rounded-full bg-muted">
-                  <Github className="h-10 w-10 text-muted-foreground" />
+            <form onSubmit={handleConnect} className="space-y-6" noValidate>
+              <div className="space-y-2">
+                <Label htmlFor="github-username">GitHub username</Label>
+                <div className="relative">
+                  <Github className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="github-username"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      setConnectError(null);
+                    }}
+                    placeholder="octocat"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoFocus
+                    aria-invalid={!!connectError}
+                    aria-describedby="github-username-help"
+                    className="pl-9"
+                  />
                 </div>
-                <div>
-                  <p className="font-medium">Connect Your GitHub</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Track your repositories, contributions, and stars
+                {connectError ? (
+                  <p id="github-username-help" role="alert" className="flex items-start gap-2 text-xs text-destructive">
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" /> {connectError}
                   </p>
-                </div>
+                ) : (
+                  <p id="github-username-help" className="text-xs text-muted-foreground">
+                    The name in your profile URL: github.com/<span className="text-foreground">{cleaned || 'username'}</span>
+                  </p>
+                )}
               </div>
 
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">What we'll access:</p>
-                <ul className="space-y-1 ml-4">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-500" />
-                    Public profile information
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-500" />
-                    Repository data
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-500" />
-                    Contribution statistics
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <X className="h-4 w-4 text-muted-foreground" />
-                    Private repository access
-                  </li>
+              <div className="space-y-2 text-sm">
+                <p className="t-eyebrow">What CodeOrbit reads</p>
+                <ul className="space-y-2 text-muted-foreground">
+                  {['Your public profile', 'Repository star counts', 'Contribution totals and your activity calendar'].map((t) => (
+                    <li key={t} className="flex items-center gap-2.5">
+                      <Check className="size-3.5 shrink-0 text-success" /> {t}
+                    </li>
+                  ))}
                 </ul>
+                <p className="pt-1 text-xs text-faint">Public information only. No GitHub login or permissions are requested.</p>
               </div>
 
-              <Button
-                className="w-full"
-                onClick={handleConnect}
-                disabled={loading}
-              >
-                <Github className="h-4 w-4 mr-2" />
-                Connect with GitHub
-                <ExternalLink className="h-4 w-4 ml-2" />
+              <Button type="submit" className="w-full" disabled={loading || !cleaned}>
+                {loading && action === 'connect' ? <Loader2 className="animate-spin" /> : <Github />}
+                {loading && action === 'connect' ? 'Importing your GitHub…' : 'Connect GitHub'}
               </Button>
-            </div>
+            </form>
           ) : (
-            // Connected State
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
-                <Avatar className="h-16 w-16">
-                  <AvatarImage src={githubData.avatar} alt={githubData.username} />
-                  <AvatarFallback>
-                    {githubData.username[0].toUpperCase()}
-                  </AvatarFallback>
+            <>
+              <div className="flex items-center gap-4">
+                <Avatar className="size-14 rounded-md after:rounded-md">
+                  <AvatarImage className="rounded-md" src={githubData.avatar} alt={githubData.username} />
+                  <AvatarFallback className="rounded-md">{githubData.username[0].toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">@{githubData.username}</p>
-                    <Badge variant="outline" className="text-green-500 border-green-500">
-                      <Check className="h-3 w-3 mr-1" />
-                      Connected
-                    </Badge>
-                  </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <StatusDot tone="success" /> @{githubData.username}
+                  </p>
                   <a
                     href={`https://github.com/${githubData.username}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 mt-1"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   >
-                    View Profile
-                    <ExternalLink className="h-3 w-3" />
+                    View on GitHub <ExternalLink className="size-3" />
                   </a>
                 </div>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-2xl font-bold">{githubData.publicRepos}</p>
-                  <p className="text-xs text-muted-foreground">Repositories</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-2xl font-bold">{githubData.totalStars}</p>
-                  <p className="text-xs text-muted-foreground">Stars</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-2xl font-bold">{githubData.followers}</p>
-                  <p className="text-xs text-muted-foreground">Followers</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-2xl font-bold">{githubData.totalContributions}</p>
-                  <p className="text-xs text-muted-foreground">Contributions</p>
-                </div>
-              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-5 border-y border-border py-5">
+                {[
+                  ['Contributions', githubData.totalContributions],
+                  ['Repositories', githubData.publicRepos],
+                  ['Stars', githubData.totalStars],
+                  ['Followers', githubData.followers],
+                ].map(([k, v]) => (
+                  <div key={k as string}>
+                    <dt className="t-eyebrow">{k}</dt>
+                    <dd className="t-num mt-1.5 text-2xl">{Number(v ?? 0).toLocaleString()}</dd>
+                  </div>
+                ))}
+              </dl>
 
-              {/* Actions */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleRefresh}
-                  disabled={loading}
-                >
-                  {loading && action === 'refresh' ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Github className="h-4 w-4 mr-2" />
-                  )}
-                  Refresh Data
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleDisconnect}
-                  disabled={loading}
-                >
-                  {loading && action === 'disconnect' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Disconnect'
-                  )}
-                </Button>
-              </div>
+              {confirmDisconnect ? (
+                <div role="alert" className="space-y-3 border-l-2 border-destructive bg-destructive/8 px-4 py-3">
+                  <p className="text-sm">Remove GitHub and its stats from CodeOrbit? You can reconnect later.</p>
+                  <div className="flex gap-2">
+                    <Button variant="destructive" size="sm" onClick={handleDisconnect} disabled={loading}>
+                      {loading && action === 'disconnect' && <Loader2 className="animate-spin" />}
+                      Yes, disconnect
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDisconnect(false)} disabled={loading}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={handleRefresh} disabled={loading}>
+                    <RefreshCw className={loading && action === 'refresh' ? 'animate-spin' : ''} />
+                    {loading && action === 'refresh' ? 'Refreshing' : 'Refresh data'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setConfirmDisconnect(true)} disabled={loading} className="text-muted-foreground hover:text-destructive">
+                    Disconnect
+                  </Button>
+                </div>
+              )}
 
               {githubData.connectedAt && (
-                <p className="text-xs text-center text-muted-foreground">
-                  Connected on {new Date(githubData.connectedAt).toLocaleDateString()}
-                </p>
+                <p className="text-xs text-faint">Connected {new Date(githubData.connectedAt).toLocaleDateString()}</p>
               )}
-            </div>
+            </>
           )}
         </div>
       </DialogContent>

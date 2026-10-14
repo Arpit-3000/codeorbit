@@ -1,27 +1,31 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Search, UserPlus, UserCheck, Loader2, Clock, UserMinus } from 'lucide-react';
-import Link from 'next/link';
+import { useState, useEffect, useRef } from 'react';
+import { Search, UserPlus, Loader2, Clock, UserMinus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { searchUsers, sendFriendRequest, getUserSuggestions, SearchUser } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/auth-context';
+import { EmptyState, ErrorState } from '@/components/ds/primitives';
+import { PersonRow } from './person';
 
-type FollowStatus = 'none' | 'pending' | 'following';
+type FollowStatus = 'none' | 'sending' | 'pending' | 'following';
 
+/**
+ * Discover people. Search runs as you type (debounced) and on Enter; same endpoint as before.
+ * The follow button walks through its states instead of flipping silently.
+ */
 export function UserSearchSection() {
-  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchUser[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchUser[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  const [suggestionsFailed, setSuggestionsFailed] = useState(false);
   const [followStatus, setFollowStatus] = useState<Map<string, FollowStatus>>(new Map());
+  const seq = useRef(0);
 
   useEffect(() => {
     loadSuggestions();
@@ -30,67 +34,63 @@ export function UserSearchSection() {
   const loadSuggestions = async () => {
     try {
       setLoadingSuggestions(true);
+      setSuggestionsFailed(false);
       const data = await getUserSuggestions();
       setSuggestions(data.suggestions || []);
     } catch (error) {
       console.error('Failed to load suggestions:', error);
+      setSuggestionsFailed(true);
     } finally {
       setLoadingSuggestions(false);
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
+  const runSearch = async (q: string) => {
+    const mine = ++seq.current;
+    if (!q.trim()) {
+      setSearchResults(null);
+      setSearching(false);
       return;
     }
-
     try {
-      setLoading(true);
-      const data = await searchUsers(searchQuery);
-      setSearchResults(data.users || []);
-      
-      // If no results, show message
-      if (data.users.length === 0) {
-        toast({
-          title: 'No Results',
-          description: 'No users found. Try searching by username or email.',
-        });
-      }
+      setSearching(true);
+      setSearchFailed(false);
+      const data = await searchUsers(q);
+      if (mine === seq.current) setSearchResults(data.users || []);
     } catch (error) {
       console.error('Search failed:', error);
-      toast({
-        title: 'Search Failed',
-        description: 'Failed to search users',
-        variant: 'destructive',
-      });
+      if (mine === seq.current) setSearchFailed(true);
     } finally {
-      setLoading(false);
+      if (mine === seq.current) setSearching(false);
     }
   };
 
+  // Debounced live search; ignores out-of-order responses.
+  useEffect(() => {
+    const t = setTimeout(() => runSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  const setStatus = (id: string, s: FollowStatus) => setFollowStatus((prev) => new Map(prev).set(id, s));
+
   const handleFollowAction = async (userId: string) => {
     const currentStatus = followStatus.get(userId) || 'none';
+    if (currentStatus === 'sending') return;
 
     try {
       if (currentStatus === 'none') {
-        // Send follow request
+        setStatus(userId, 'sending');
         await sendFriendRequest(userId);
-        setFollowStatus(prev => new Map(prev).set(userId, 'pending'));
-        toast({
-          title: 'Success',
-          description: 'Follow request sent',
-        });
+        setStatus(userId, 'pending');
+        toast({ title: 'Request sent', description: 'They\'ll see it in their notifications.' });
       } else if (currentStatus === 'following') {
-        // Unfollow user
         // TODO: Call unfollow API when available
-        setFollowStatus(prev => new Map(prev).set(userId, 'none'));
-        toast({
-          title: 'Success',
-          description: 'Unfollowed user',
-        });
+        setStatus(userId, 'none');
+        toast({ title: 'Unfollowed', description: 'You are no longer following this user.' });
       }
     } catch (error: any) {
+      setStatus(userId, currentStatus);
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to perform action',
@@ -99,137 +99,97 @@ export function UserSearchSection() {
     }
   };
 
-  const getFollowButton = (userId: string) => {
+  const followButton = (userId: string) => {
     const status = followStatus.get(userId) || 'none';
-
     switch (status) {
-      case 'pending':
+      case 'sending':
         return (
           <Button size="sm" variant="outline" disabled>
-            <Clock className="h-4 w-4 mr-2" />
-            Pending
+            <Loader2 className="animate-spin" /> Sending
+          </Button>
+        );
+      case 'pending':
+        return (
+          <Button size="sm" variant="ghost" disabled className="text-muted-foreground">
+            <Clock /> Requested
           </Button>
         );
       case 'following':
         return (
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={() => handleFollowAction(userId)}
-          >
-            <UserMinus className="h-4 w-4 mr-2" />
-            Unfollow
+          <Button size="sm" variant="outline" onClick={() => handleFollowAction(userId)}>
+            <UserMinus /> Unfollow
           </Button>
         );
       default:
         return (
-          <Button
-            size="sm"
-            onClick={() => handleFollowAction(userId)}
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Follow
+          <Button size="sm" onClick={() => handleFollowAction(userId)}>
+            <UserPlus /> Follow
           </Button>
         );
     }
   };
 
-  const UserCard = ({ user }: { user: SearchUser }) => (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-12 w-12">
-            <AvatarImage src={user.photoURL || user.profileImage} />
-            <AvatarFallback>
-              {(user.displayName || user.username || user.email || 'U')[0].toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="font-semibold truncate">
-                {user.displayName || user.username || 'User'}
-              </p>
-              {user.onlineStatus && (
-                <Badge variant="outline" className="text-green-500 border-green-500">
-                  Online
-                </Badge>
-              )}
-            </div>
-            {user.username && (
-              <p className="text-sm text-muted-foreground">@{user.username}</p>
-            )}
-            {user.email && (
-              <p className="text-xs text-muted-foreground">{user.email}</p>
-            )}
-            {user.bio && (
-              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{user.bio}</p>
-            )}
-          </div>
-          {getFollowButton(user._id)}
-        </div>
-      </CardContent>
-    </Card>
+  const renderUser = (u: SearchUser) => (
+    <PersonRow
+      key={u._id}
+      person={u}
+      online={u.onlineStatus}
+      meta={u.bio ? <span className="line-clamp-1">{u.bio}</span> : u.email ? <span className="truncate">{u.email}</span> : undefined}
+    >
+      {followButton(u._id)}
+    </PersonRow>
   );
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Search Users</CardTitle>
-            <CardDescription>Find and connect with other developers</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by username, name, or email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="pl-10"
-              />
-            </div>
-            <Button onClick={handleSearch} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {searchResults.length > 0 && (
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Search Results</h3>
-          <div className="space-y-3">
-            {searchResults.map((user) => (
-              <UserCard key={user._id} user={user} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Suggested Users</h3>
-        {loadingSuggestions ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : suggestions.length > 0 ? (
-          <div className="space-y-3">
-            {suggestions.map((user) => (
-              <UserCard key={user._id} user={user} />
-            ))}
-          </div>
+    <div className="space-y-8">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Find developers by username, name or email"
+          aria-label="Search users"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && runSearch(searchQuery)}
+          className="h-11 pl-10 pr-10 text-[15px]"
+        />
+        {searching ? (
+          <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         ) : (
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              No suggestions available
-            </CardContent>
-          </Card>
+          searchQuery && (
+            <button onClick={() => setSearchQuery('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-foreground">
+              <X className="size-4" />
+            </button>
+          )
         )}
       </div>
+
+      {searchQuery.trim() ? (
+        searchFailed ? (
+          <ErrorState compact title="Search didn't go through" description="We couldn't reach the server. Your query is still there." onRetry={() => runSearch(searchQuery)} />
+        ) : searchResults === null ? null : searchResults.length === 0 && !searching ? (
+          <EmptyState compact title={`No one matches “${searchQuery.trim()}”`} description="Try their exact username, or the email they signed up with." />
+        ) : (
+          <section aria-label="Search results">
+            <p className="t-eyebrow mb-1">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</p>
+            <ul>{searchResults.map(renderUser)}</ul>
+          </section>
+        )
+      ) : (
+        <section aria-label="Suggested developers">
+          <p className="t-eyebrow mb-1">Suggested</p>
+          {loadingSuggestions ? (
+            <div className="space-y-3 pt-3">
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : suggestionsFailed ? (
+            <ErrorState compact title="Couldn't load suggestions" onRetry={loadSuggestions} className="mt-3" />
+          ) : suggestions.length > 0 ? (
+            <ul>{suggestions.map(renderUser)}</ul>
+          ) : (
+            <EmptyState compact title="No suggestions right now" description="Search for someone by name above." className="mt-3" />
+          )}
+        </section>
+      )}
     </div>
   );
 }

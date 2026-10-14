@@ -4,6 +4,7 @@
  */
 
 import axios from "axios"
+import { getFreshToken } from "@/lib/token"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 const AI_INTERVIEW_BASE = `${API_BASE_URL}/api/ai-interview`
@@ -22,8 +23,8 @@ const apiClient = axios.create({
 })
 
 // Add auth token to requests
-apiClient.interceptors.request.use((config) => {
-  const token = getAuthToken()
+apiClient.interceptors.request.use(async (config) => {
+  const token = await getFreshToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -193,7 +194,7 @@ export async function getSessionStatus(
  * Advance Stage
  */
 export async function advanceStage(session_id: string) {
-  const response = await apiClient.post(`/advance/${session_id}`)
+  const response = await apiClient.post(`/advance-stage/${session_id}`)
   return response.data
 }
 

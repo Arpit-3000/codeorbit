@@ -1,11 +1,8 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Radio, Check, X, Loader2, Send } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Check, X, Loader2, Send, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   getPendingPings,
   acceptPingRequest,
@@ -32,70 +30,66 @@ import {
   PingRequest,
 } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { EmptyState, ErrorState, StatusDot, formatCountdown } from '@/components/ds/primitives';
+import { PersonAvatar, PersonRow, personName } from './person';
 
-export function PingRequestsSection() {
+/**
+ * Incoming pings are the most time-sensitive thing in Collab Space (they expire in 5 minutes),
+ * so each one carries its own countdown, and the list re-checks the server every 15s.
+ */
+export function PingRequestsSection({ onCount }: { onCount?: (n: number) => void }) {
   const router = useRouter();
   const [pings, setPings] = useState<PingRequest[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState('');
   const [pingMessage, setPingMessage] = useState('');
+  const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async (quiet = false) => {
     try {
-      setLoading(true);
-      console.log('[PING REQUESTS] Loading data...');
-      
-      const [pingsData, friendsData] = await Promise.all([
-        getPendingPings(),
-        getFriendsList(),
-      ]);
-      
-      console.log('[PING REQUESTS] Pings received:', pingsData.pings?.length || 0);
-      console.log('[PING REQUESTS] Friends received:', friendsData.friends?.length || 0);
-      console.log('[PING REQUESTS] Online friends:', friendsData.friends?.filter(f => f.onlineStatus).length || 0);
-      
-      setPings(pingsData.pings || []);
+      if (!quiet) setLoading(true);
+      setFailed(false);
+      const [pingsData, friendsData] = await Promise.all([getPendingPings(), getFriendsList()]);
+      const p: PingRequest[] = pingsData.pings || [];
+      setPings(p);
       setFriends(friendsData.friends || []);
+      onCount?.(p.length);
     } catch (error) {
       console.error('[PING REQUESTS] Failed to load pings:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load ping requests',
-        variant: 'destructive',
-      });
+      if (!quiet) setFailed(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, [onCount]);
+
+  useEffect(() => {
+    loadData();
+    const poll = setInterval(() => loadData(true), 15_000);
+    return () => clearInterval(poll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (pings.length === 0) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [pings.length]);
 
   const handleAccept = async (pingId: string) => {
     try {
       setActionLoading(pingId);
       const response = await acceptPingRequest(pingId);
-      toast({
-        title: 'Ping Accepted!',
-        description: 'Redirecting to collaboration room...',
-      });
-      // Redirect to room
-      setTimeout(() => {
-        router.push(`/room/${response.roomId}`);
-      }, 1000);
+      setOpening(pingId);
+      toast({ title: 'Ping accepted', description: 'Opening the collaboration room…' });
+      setTimeout(() => router.push(`/room/${response.roomId}`), 800);
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to accept ping',
-        variant: 'destructive',
-      });
-    } finally {
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to accept ping', variant: 'destructive' });
       setActionLoading(null);
     }
   };
@@ -104,17 +98,10 @@ export function PingRequestsSection() {
     try {
       setActionLoading(pingId);
       await rejectPingRequest(pingId);
-      toast({
-        title: 'Ping Rejected',
-        description: 'Ping request rejected',
-      });
-      loadData();
+      toast({ title: 'Ping declined' });
+      loadData(true);
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to reject ping',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to reject ping', variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
@@ -122,226 +109,122 @@ export function PingRequestsSection() {
 
   const handleSendPing = async () => {
     if (!selectedFriend) {
-      toast({
-        title: 'Error',
-        description: 'Please select a friend',
-        variant: 'destructive',
-      });
+      toast({ title: 'Pick a friend first', variant: 'destructive' });
       return;
     }
-
     try {
       setActionLoading('send');
-      console.log('[PING REQUESTS] Sending ping to:', selectedFriend);
-      console.log('[PING REQUESTS] Message:', pingMessage);
-      
       await sendPingRequest(selectedFriend, pingMessage || undefined);
-      
-      console.log('[PING REQUESTS] Ping sent successfully');
-      
-      toast({
-        title: 'Ping Sent! 🔔',
-        description: 'Your collaboration request has been sent',
-      });
-      
+      toast({ title: 'Ping sent', description: 'They have 5 minutes to answer.' });
       setSendDialogOpen(false);
       setSelectedFriend('');
       setPingMessage('');
     } catch (error: any) {
-      console.error('[PING REQUESTS] Failed to send ping:', error);
-      
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to send ping',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error.response?.data?.message || 'Failed to send ping', variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const online = friends.filter((f) => f.onlineStatus);
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Radio className="h-5 w-5" />
-                Ping Requests
-                {pings.length > 0 && (
-                  <Badge variant="destructive">{pings.length}</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Collaboration requests from your friends
-              </CardDescription>
-            </div>
-            <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Ping
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Send Ping Request</DialogTitle>
-                  <DialogDescription>
-                    Invite a friend to collaborate in real-time
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="friend-select">Select Friend</Label>
-                    <Select value={selectedFriend} onValueChange={setSelectedFriend}>
-                      <SelectTrigger id="friend-select" className="w-full">
-                        <SelectValue placeholder="Choose a friend..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {friends.filter((f) => f.onlineStatus).length === 0 ? (
-                          <div className="p-4 text-center text-sm text-muted-foreground">
-                            No friends are currently online
-                          </div>
-                        ) : (
-                          friends
-                            .filter((f) => f.onlineStatus)
-                            .map((friend) => (
-                              <SelectItem key={friend._id} value={friend._id}>
-                                <div className="flex items-center gap-2">
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={friend.photoURL || friend.profileImage} />
-                                    <AvatarFallback>
-                                      {(friend.displayName || friend.username || 'U')[0].toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span>{friend.displayName || friend.username}</span>
-                                  <Badge variant="outline" className="text-green-500 border-green-500 ml-auto">
-                                    Online
-                                  </Badge>
-                                </div>
-                              </SelectItem>
-                            ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      You can only ping friends who are online
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ping-message">Message (Optional)</Label>
-                    <Input
-                      id="ping-message"
-                      placeholder="Let's solve problems together!"
-                      value={pingMessage}
-                      onChange={(e) => setPingMessage(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    className="w-full"
-                    onClick={handleSendPing}
-                    disabled={actionLoading === 'send' || !selectedFriend}
-                  >
-                    {actionLoading === 'send' ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="t-eyebrow flex items-center gap-2">
+          <StatusDot tone={pings.length ? 'primary' : 'neutral'} live={pings.length > 0} />
+          Pings {pings.length > 0 && <span className="t-num text-primary">{pings.length}</span>}
+        </p>
+        <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline">
+              <Send /> New ping
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ping a friend</DialogTitle>
+              <DialogDescription>They get a live invite to a room with chat, whiteboard and video. It expires in 5 minutes.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="friend-select">Friend</Label>
+                <Select value={selectedFriend} onValueChange={setSelectedFriend}>
+                  <SelectTrigger id="friend-select" className="w-full">
+                    <SelectValue placeholder="Choose a friend…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {online.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">No friends are online right now</div>
                     ) : (
-                      <Send className="h-4 w-4 mr-2" />
+                      online.map((friend) => (
+                        <SelectItem key={friend._id} value={friend._id}>
+                          <span className="flex items-center gap-2">
+                            <PersonAvatar person={friend} size="sm" />
+                            {personName(friend)}
+                          </span>
+                        </SelectItem>
+                      ))
                     )}
-                    Send Ping
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {pings.length > 0 ? (
-            <div className="space-y-3">
-              {pings.map((ping) => (
-                <Card key={ping._id} className="border-primary/50">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage
-                          src={ping.sender.photoURL || ping.sender.profileImage}
-                        />
-                        <AvatarFallback>
-                          {(
-                            ping.sender.displayName ||
-                            ping.sender.username ||
-                            'U'
-                          )[0].toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold">
-                          {ping.sender.displayName || ping.sender.username}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {ping.message || 'wants to collaborate'}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatDistanceToNow(new Date(ping.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleAccept(ping._id)}
-                          disabled={actionLoading === ping._id}
-                        >
-                          {actionLoading === ping._id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <>
-                              <Check className="h-4 w-4 mr-2" />
-                              Accept
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReject(ping._id)}
-                          disabled={actionLoading === ping._id}
-                        >
-                          <X className="h-4 w-4 mr-2" />
-                          Reject
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Only friends who are online can be pinged.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ping-message">Message <span className="text-faint">(optional)</span></Label>
+                <Input id="ping-message" placeholder="Let's work through a graph problem together" value={pingMessage} onChange={(e) => setPingMessage(e.target.value)} />
+              </div>
+              <Button className="w-full" onClick={handleSendPing} disabled={actionLoading === 'send' || !selectedFriend}>
+                {actionLoading === 'send' ? <Loader2 className="animate-spin" /> : <Send />}
+                {actionLoading === 'send' ? 'Sending' : 'Send ping'}
+              </Button>
             </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No pending ping requests
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </DialogContent>
+        </Dialog>
+      </div>
 
-      {friends.filter((f) => f.onlineStatus).length === 0 && (
-        <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">
-            <p>No friends are currently online</p>
-            <p className="text-sm mt-2">
-              You can only ping friends who are online
-            </p>
-          </CardContent>
-        </Card>
+      {loading ? (
+        <Skeleton className="h-16" />
+      ) : failed ? (
+        <ErrorState compact title="Couldn't check for pings" onRetry={() => loadData()} />
+      ) : pings.length > 0 ? (
+        <ul className="border-l-2 border-primary pl-4">
+          {pings.map((ping) => {
+            const left = new Date(ping.expiresAt).getTime() - now;
+            const busy = actionLoading === ping._id;
+            return (
+              <PersonRow
+                key={ping._id}
+                person={ping.sender}
+                meta={
+                  <span>
+                    {ping.message || 'wants to collaborate'}
+                    {ping.expiresAt && (
+                      <span className={left < 60_000 ? 't-num ml-2 text-destructive' : 't-num ml-2 text-faint'}>
+                        {left > 0 ? `· ${formatCountdown(left)} left` : '· expiring'}
+                      </span>
+                    )}
+                  </span>
+                }
+              >
+                <Button size="sm" onClick={() => handleAccept(ping._id)} disabled={busy || left <= 0}>
+                  {opening === ping._id ? <Loader2 className="animate-spin" /> : busy ? <Loader2 className="animate-spin" /> : <Check />}
+                  {opening === ping._id ? 'Opening…' : 'Join'}
+                </Button>
+                <Button size="icon-sm" variant="ghost" onClick={() => handleReject(ping._id)} disabled={busy} aria-label={`Decline ping from ${personName(ping.sender)}`}>
+                  <X />
+                </Button>
+              </PersonRow>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyState
+          compact
+          icon={<Radio className="size-4" />}
+          title="No pings waiting"
+          description={online.length ? `${online.length} friend${online.length === 1 ? ' is' : 's are'} online. Ping one to start a room.` : 'Nobody is online right now.'}
+        />
       )}
     </div>
   );

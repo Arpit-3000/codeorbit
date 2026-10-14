@@ -1,23 +1,26 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { AppSidebar } from "@/components/app-sidebar"
-import { TopNavbar } from "@/components/top-navbar"
-import { InterviewSetup } from "./interview-setup"
+import { AppShell } from "@/components/shell/app-shell"
+import { InterviewSetup, type InterviewMeta } from "./interview-setup"
 import { InterviewRoom } from "./interview-room"
 import { InterviewReport } from "./interview-report"
 
 type InterviewStage = "setup" | "interview" | "report"
 
+/**
+ * setup -> interview -> report. The shell keeps only a slim navigation rail here
+ * (no top bar) so the conversation has the whole viewport.
+ */
 export function MockInterviewLayout() {
-  const router = useRouter()
   const [stage, setStage] = useState<InterviewStage>("setup")
   const [sessionId, setSessionId] = useState<string>("")
+  const [meta, setMeta] = useState<InterviewMeta | undefined>()
   const [reportData, setReportData] = useState<any>(null)
 
-  const handleStartInterview = (id: string) => {
+  const handleStartInterview = (id: string, m?: InterviewMeta) => {
     setSessionId(id)
+    setMeta(m)
     setStage("interview")
   }
 
@@ -28,59 +31,16 @@ export function MockInterviewLayout() {
 
   const handleRestartInterview = () => {
     setSessionId("")
+    setMeta(undefined)
     setReportData(null)
     setStage("setup")
   }
 
-  // Handle sidebar navigation
-  const handleSidebarNav = (tab: string) => {
-    console.log('[MOCK INTERVIEW] Sidebar nav to:', tab)
-    
-    // Map sidebar tabs to routes
-    const routes: Record<string, string> = {
-      'dashboard': '/',
-      'profile': '/profile',
-      'activity': '/activity',
-      'contests': '/contests',
-      'resources': '/resources',
-      'social': '/social',
-      'mock-interview': '/mock-interview',
-      'ai-insights': '/ai-insights',
-      'settings': '/settings',
-    }
-    
-    if (routes[tab]) {
-      router.push(routes[tab])
-    }
-  }
-
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar activeTab="mock-interview" onTabChange={handleSidebarNav} />
-      
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopNavbar onConnectPlatforms={() => {}} />
-        
-        <main className="flex-1 overflow-y-auto">
-          {stage === "setup" && (
-            <InterviewSetup onStart={handleStartInterview} />
-          )}
-          
-          {stage === "interview" && (
-            <InterviewRoom 
-              sessionId={sessionId}
-              onEnd={handleEndInterview}
-            />
-          )}
-          
-          {stage === "report" && (
-            <InterviewReport 
-              report={reportData}
-              onRestart={handleRestartInterview}
-            />
-          )}
-        </main>
-      </div>
-    </div>
+    <AppShell bleed hideTopbar forceCollapsed>
+      {stage === "setup" && <InterviewSetup onStart={handleStartInterview} />}
+      {stage === "interview" && <InterviewRoom sessionId={sessionId} meta={meta} onEnd={handleEndInterview} />}
+      {stage === "report" && <InterviewReport report={reportData} onRestart={handleRestartInterview} />}
+    </AppShell>
   )
 }

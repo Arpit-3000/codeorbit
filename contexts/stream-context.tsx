@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { StreamChat, Channel, Event } from 'stream-chat';
 import { useAuth } from './auth-context';
 import { toast } from '@/hooks/use-toast';
+import { getFreshToken } from '@/lib/token';
 
 interface StreamContextType {
   client: StreamChat | null;
@@ -27,14 +28,15 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const token = localStorage.getItem('token');
-    if (!token) {
+    if (!localStorage.getItem('token')) {
       console.log('[STREAM] No token found in localStorage');
       return;
     }
 
     const initStream = async () => {
       try {
+        // Google sessions use a short-lived token, so always read the current one
+        const token = await getFreshToken();
         console.log('[STREAM] Initializing Stream connection...');
         console.log('[STREAM] User:', user.email, user.id);
 
@@ -100,10 +102,11 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
         // Listen for ping requests
         notifChannel.on('ping_request', (event: Event) => {
           console.log('[STREAM] Ping request received:', event);
-          const data = event.data as any;
+          // the server nests the sender's details under `pingRequest`
+          const data = ((event.data as any)?.pingRequest ?? event.data ?? {}) as any;
           toast({
             title: '📍 Ping Request',
-            description: `${data.displayName || data.username} wants to collaborate!`,
+            description: `${data.displayName || data.username || 'A friend'} wants to collaborate!`,
           });
         });
 

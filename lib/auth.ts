@@ -1,5 +1,6 @@
 import axios from "axios";
 import { signInWithPopup } from "firebase/auth";
+import { getFreshToken } from "@/lib/token";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -13,9 +14,9 @@ const api = axios.create({
 
 if (typeof window !== "undefined") {
 
-  api.interceptors.request.use((config) => {
+  api.interceptors.request.use(async (config) => {
 
-    const token = localStorage.getItem("token");
+    const token = await getFreshToken();
 
     if (token) {
       config.headers = config.headers || {};

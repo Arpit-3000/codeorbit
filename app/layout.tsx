@@ -1,15 +1,20 @@
 import type { Metadata, Viewport } from 'next'
+import { Instrument_Sans, Space_Grotesk, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/contexts/auth-context'
 import { StreamProvider } from '@/contexts/stream-context'
 import { Toaster } from '@/components/ui/toaster'
+import { PALETTE_BOOT_SCRIPT } from '@/lib/palette'
 import './globals.css'
 
+const fontUi = Instrument_Sans({ subsets: ['latin'], variable: '--font-ui', display: 'swap' })
+const fontHeading = Space_Grotesk({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-heading', display: 'swap' })
+const fontData = JetBrains_Mono({ subsets: ['latin'], variable: '--font-data', display: 'swap' })
+
 export const metadata: Metadata = {
-  title: 'CodeOrbit - Developer Analytics Dashboard',
-  description: 'Aggregate and analyze your competitive programming stats across LeetCode, Codeforces, CodeChef, GeeksforGeeks, and GitHub in one premium dashboard.',
-  generator: 'v0.app',
+  title: { default: 'CodeOrbit', template: '%s · CodeOrbit' },
+  description: 'Your LeetCode, Codeforces, CodeChef, GeeksforGeeks and GitHub activity in one place, with AI insights, mock interviews and live collaboration.',
   icons: {
     icon: [
       {
@@ -21,7 +26,7 @@ export const metadata: Metadata = {
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.svg',
+        url: '/brand/CodeOrbit_Icon.svg',
         type: 'image/svg+xml',
       },
     ],
@@ -30,7 +35,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#1a1a2e',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f6f4ef' },
+    { media: '(prefers-color-scheme: dark)', color: '#14130f' },
+  ],
   width: 'device-width',
   initialScale: 1,
 }
@@ -41,7 +49,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${fontUi.variable} ${fontHeading.variable} ${fontData.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: PALETTE_BOOT_SCRIPT }} />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"

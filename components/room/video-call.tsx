@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   StreamVideo,
   StreamVideoClient,
@@ -10,10 +10,10 @@ import {
   ParticipantView,
 } from '@stream-io/video-react-sdk';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
-import { Loader2, Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { StatusDot } from '@/components/ds/primitives';
+import { cn } from '@/lib/utils';
 
 interface VideoCallProps {
   apiKey: string;
@@ -32,36 +32,31 @@ interface VideoCallProps {
   onCallEnd?: () => void;
 }
 
-function VideoCallUI({ 
+function VideoCallUI({
   roomParticipants,
-  onCallEnd 
-}: { 
+  onCallEnd,
+}: {
   roomParticipants: VideoCallProps['participants'];
   onCallEnd?: () => void;
 }) {
   const { useCallCallingState, useParticipants, useMicrophoneState, useCameraState } = useCallStateHooks();
   const callingState = useCallCallingState();
   const callParticipants = useParticipants();
-  const { microphone, isMute } = useMicrophoneState();
-  const { camera, isMute: isCameraOff } = useCameraState();
+  const { microphone } = useMicrophoneState();
+  const { camera } = useCameraState();
 
-  const [localMuted, setLocalMuted] = useState(false);
-  const [localCameraOff, setLocalCameraOff] = useState(false);
+  const [micOff, setMicOff] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
 
   useEffect(() => {
-    if (callingState === 'left') {
-      onCallEnd?.();
-    }
+    if (callingState === 'left') onCallEnd?.();
   }, [callingState, onCallEnd]);
 
   const toggleMic = async () => {
     try {
-      if (localMuted) {
-        await microphone.enable();
-      } else {
-        await microphone.disable();
-      }
-      setLocalMuted(!localMuted);
+      if (micOff) await microphone.enable();
+      else await microphone.disable();
+      setMicOff(!micOff);
     } catch (error) {
       console.error('[VIDEO] Failed to toggle mic:', error);
     }
@@ -69,137 +64,61 @@ function VideoCallUI({
 
   const toggleCamera = async () => {
     try {
-      if (localCameraOff) {
-        await camera.enable();
-      } else {
-        await camera.disable();
-      }
-      setLocalCameraOff(!localCameraOff);
+      if (cameraOff) await camera.enable();
+      else await camera.disable();
+      setCameraOff(!cameraOff);
     } catch (error) {
       console.error('[VIDEO] Failed to toggle camera:', error);
     }
   };
 
-  const handleEndCall = () => {
-    onCallEnd?.();
-  };
-
   if (callingState !== 'joined') {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">
-            {callingState === 'joining' ? 'Joining video call...' : 'Connecting...'}
-          </p>
-        </div>
+      <div role="status" className="flex items-center gap-3 p-4 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin text-primary" />
+        {callingState === 'joining' ? 'Joining the call…' : callingState === 'reconnecting' ? 'Connection dropped. Reconnecting…' : 'Connecting…'}
       </div>
     );
   }
 
+  const inCall = (id: string) => callParticipants.some((p) => p.userId === id);
+  const waiting = roomParticipants.filter((p) => !inCall(p._id));
+
   return (
-    <div className="space-y-4">
-      {/* Video Call Status */}
-      <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="h-3 w-3 rounded-full bg-blue-500 animate-pulse" />
-          <p className="text-sm font-medium">Video Call Active</p>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {callParticipants.length} participant{callParticipants.length !== 1 ? 's' : ''} in call
+    <div className="flex flex-col">
+      <div className={cn('grid gap-px bg-border', callParticipants.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
+        {callParticipants.map((p) => (
+          <div key={p.sessionId} className="relative aspect-video overflow-hidden bg-black">
+            <ParticipantView participant={p} ParticipantViewUI={null} />
+            <span className="absolute bottom-1.5 left-1.5 rounded-sm bg-black/70 px-1.5 py-0.5 text-[11px] text-white">
+              {p.isLocalParticipant ? 'You' : p.name || 'User'}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {waiting.length > 0 && (
+        <p className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+          Waiting for {waiting.map((w) => w.displayName || w.username).join(', ')}…
         </p>
-      </div>
+      )}
 
-      {/* Video Participants */}
-      <div className="space-y-3 max-h-[300px] overflow-y-auto">
-        {callParticipants.length > 0 ? (
-          callParticipants.map((participant) => (
-            <div key={participant.sessionId} className="relative rounded-lg overflow-hidden bg-black aspect-video">
-              <ParticipantView
-                participant={participant}
-                ParticipantViewUI={null}
-              />
-              <div className="absolute bottom-2 left-2 bg-black/70 px-2 py-1 rounded text-xs text-white">
-                {participant.name || 'User'} {participant.isLocalParticipant && '(You)'}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            Waiting for others to join...
-          </div>
-        )}
-      </div>
-
-      {/* Video Controls */}
-      <div className="grid grid-cols-3 gap-2">
-        <Button
-          variant={localMuted ? "destructive" : "outline"}
-          size="lg"
-          className="h-16"
-          onClick={toggleMic}
-        >
-          <div className="flex flex-col items-center gap-1">
-            {localMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            <span className="text-xs">{localMuted ? 'Unmute' : 'Mute'}</span>
-          </div>
-        </Button>
-        
-        <Button
-          variant={localCameraOff ? "destructive" : "outline"}
-          size="lg"
-          className="h-16"
-          onClick={toggleCamera}
-        >
-          <div className="flex flex-col items-center gap-1">
-            {localCameraOff ? <VideoOff className="h-5 w-5" /> : <VideoIcon className="h-5 w-5" />}
-            <span className="text-xs">{localCameraOff ? 'Camera Off' : 'Camera On'}</span>
-          </div>
-        </Button>
-
-        <Button
-          variant="destructive"
-          size="lg"
-          className="h-16"
-          onClick={handleEndCall}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <PhoneOff className="h-5 w-5" />
-            <span className="text-xs">End Call</span>
-          </div>
-        </Button>
-      </div>
-
-      {/* Participants Status */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">Participants</h4>
-        {roomParticipants.map((participant) => {
-          const isInCall = callParticipants.some(p => p.userId === participant._id);
-          return (
-            <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={participant.photoURL || participant.profileImage} />
-                <AvatarFallback>
-                  {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {participant.displayName || participant.username}
-                </p>
-                {isInCall ? (
-                  <Badge variant="outline" className="text-green-500 border-green-500 text-xs mt-1">
-                    In Call
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-gray-500 border-gray-500 text-xs mt-1">
-                    Not in Call
-                  </Badge>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      <div className="flex items-center justify-between gap-2 p-2">
+        <span className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+          <StatusDot tone="success" live />
+          <span className="t-num">{callParticipants.length}</span> in call
+        </span>
+        <div className="flex items-center gap-1">
+          <Button size="icon-sm" variant={micOff ? 'destructive' : 'secondary'} onClick={toggleMic} aria-pressed={micOff} aria-label={micOff ? 'Unmute microphone' : 'Mute microphone'} title={micOff ? 'Unmute' : 'Mute'}>
+            {micOff ? <MicOff /> : <Mic />}
+          </Button>
+          <Button size="icon-sm" variant={cameraOff ? 'destructive' : 'secondary'} onClick={toggleCamera} aria-pressed={cameraOff} aria-label={cameraOff ? 'Turn camera on' : 'Turn camera off'} title={cameraOff ? 'Camera on' : 'Camera off'}>
+            {cameraOff ? <VideoOff /> : <VideoIcon />}
+          </Button>
+          <Button size="sm" variant="destructive" onClick={() => onCallEnd?.()}>
+            <PhoneOff /> Leave
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -217,64 +136,68 @@ export function VideoCall({
 }: VideoCallProps) {
   const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [call, setCall] = useState<Call | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const initializeCall = async () => {
-      try {
-        console.log('[VIDEO] Initializing video call...');
-        console.log('[VIDEO] User:', userId, userName);
-        console.log('[VIDEO] Call ID:', callId);
+    // Held in locals (not state) so cleanup always sees the real objects and actually leaves the call.
+    let videoClient: StreamVideoClient | null = null;
+    let videoCall: Call | null = null;
+    let cancelled = false;
 
-        // Create video client
-        const videoClient = new StreamVideoClient({
+    (async () => {
+      try {
+        setFailed(false);
+        videoClient = new StreamVideoClient({
           apiKey,
-          user: {
-            id: userId,
-            name: userName,
-            image: userImage,
-          },
+          user: { id: userId, name: userName, image: userImage },
           token,
         });
-
-        setClient(videoClient);
-
-        // Create or join call
-        const videoCall = videoClient.call('default', callId);
-        
-        // Join the call (create: true means create if doesn't exist)
+        videoCall = videoClient.call('default', callId);
+        // create: true => create the call if nobody has started it yet
         await videoCall.join({ create: true });
-        
-        console.log('[VIDEO] ✅ Call joined successfully');
-        console.log('[VIDEO] Participants:', videoCall.state.participants);
+        if (cancelled) return;
+        setClient(videoClient);
         setCall(videoCall);
       } catch (error) {
         console.error('[VIDEO] Failed to initialize call:', error);
-      } finally {
-        setLoading(false);
+        if (!cancelled) setFailed(true);
       }
-    };
-
-    initializeCall();
+    })();
 
     return () => {
-      console.log('[VIDEO] Cleaning up video call...');
-      if (call) {
-        call.leave().catch(console.error);
-      }
-      if (client) {
-        client.disconnectUser().catch(console.error);
-      }
+      cancelled = true;
+      setClient(null);
+      setCall(null);
+      videoCall?.leave().catch(() => {});
+      videoClient?.disconnectUser().catch(() => {});
     };
-  }, [apiKey, token, userId, userName, userImage, callId]);
+  }, [apiKey, token, userId, userName, userImage, callId, attempt]);
 
-  if (loading || !client || !call) {
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+  if (failed) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Setting up video call...</p>
+      <div role="alert" className="space-y-3 p-4">
+        <p className="text-sm font-medium">Couldn't start the call</p>
+        <p className="text-xs text-muted-foreground">Check that your browser has camera and microphone access, then try again.</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={retry}>
+            <RotateCw /> Try again
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onCallEnd?.()}>
+            Cancel
+          </Button>
         </div>
+      </div>
+    );
+  }
+
+  if (!client || !call) {
+    return (
+      <div role="status" className="flex items-center gap-3 p-4 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin text-primary" />
+        Setting up the call…
       </div>
     );
   }

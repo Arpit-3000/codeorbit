@@ -32,14 +32,14 @@ export default function DebugPage() {
       <h1 className="text-2xl font-bold">Debug Page</h1>
 
       <div className="space-y-4">
-        <div className="border rounded p-4">
+        <div className="border border-border rounded-md p-4">
           <h2 className="font-bold mb-2">User Data</h2>
           <pre className="text-xs overflow-auto">
             {JSON.stringify(user, null, 2)}
           </pre>
         </div>
 
-        <div className="border rounded p-4">
+        <div className="border border-border rounded-md p-4">
           <h2 className="font-bold mb-2">Heatmap Data</h2>
           {heatmapData ? (
             <div>
@@ -54,7 +54,7 @@ export default function DebugPage() {
           )}
         </div>
 
-        <div className="border rounded p-4">
+        <div className="border border-border rounded-md p-4">
           <h2 className="font-bold mb-2">Stats Data</h2>
           <pre className="text-xs overflow-auto">
             {JSON.stringify(statsData, null, 2)}
@@ -62,7 +62,7 @@ export default function DebugPage() {
         </div>
 
         {error && (
-          <div className="border border-red-500 rounded p-4 text-red-500">
+          <div className="border border-destructive rounded p-4 text-destructive">
             <h2 className="font-bold mb-2">Error</h2>
             <p>{error}</p>
           </div>

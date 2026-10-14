@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { connectGithubOAuth } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
@@ -13,13 +12,33 @@ export default function GithubCallbackPage() {
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState('Processing GitHub authorization...');
 
+  // React runs effects twice in development; a GitHub code is single-use, so only ever start once.
+  const started = useRef(false);
+
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+
     const handleCallback = async () => {
       try {
         // Get OAuth code from URL
         const code = searchParams.get('code');
         const error = searchParams.get('error');
         const errorDescription = searchParams.get('error_description');
+
+        // Verify the `state` we sent matches what came back (CSRF protection)
+        const returnedState = searchParams.get('state');
+        let expectedState: string | null = null;
+        try {
+          expectedState = sessionStorage.getItem('github_oauth_state');
+          sessionStorage.removeItem('github_oauth_state');
+        } catch {}
+        if (code && (!expectedState || returnedState !== expectedState)) {
+          setStatus('error');
+          setMessage('This sign-in link did not start from this browser session, so it was rejected for your safety. Please start the GitHub connection again.');
+          setTimeout(() => router.push('/profile'), 4000);
+          return;
+        }
 
         console.log('[GITHUB OAUTH] Callback received');
         console.log('[GITHUB OAUTH] Code:', code ? 'Present' : 'Missing');
@@ -101,7 +120,10 @@ export default function GithubCallbackPage() {
           status: error.response?.status
         });
         setStatus('error');
-        setMessage(error.response?.data?.message || 'Failed to connect GitHub');
+        const detail = error.response?.data?.error as string | undefined;
+        setMessage(
+          [error.response?.data?.message || 'Failed to connect GitHub', detail].filter(Boolean).join(': ')
+        );
 
         toast({
           title: 'Connection Failed',
@@ -117,50 +139,31 @@ export default function GithubCallbackPage() {
   }, [searchParams, router]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted/20">
-      <Card className="w-full max-w-md mx-4">
-        <CardHeader className="text-center">
-          <CardTitle>GitHub OAuth</CardTitle>
-          <CardDescription>
-            {status === 'processing' && 'Processing your GitHub authorization'}
-            {status === 'success' && 'Successfully connected GitHub'}
-            {status === 'error' && 'Failed to connect GitHub'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center gap-4 py-8">
-          {status === 'processing' && (
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          )}
-          {status === 'success' && (
-            <CheckCircle className="h-12 w-12 text-green-500" />
-          )}
-          {status === 'error' && (
-            <XCircle className="h-12 w-12 text-destructive" />
-          )}
-          
-          <p className="text-center text-muted-foreground">
-            {message}
-          </p>
+    <main className="flex min-h-dvh items-center justify-center bg-background px-6">
+      <div role="status" aria-live="polite" className="w-full max-w-sm space-y-6">
+        <div className="space-y-2">
+          <p className="t-eyebrow">GitHub</p>
+          <h1 className="t-display text-4xl">
+            {status === 'processing' && 'Connecting…'}
+            {status === 'success' && 'Connected.'}
+            {status === 'error' && "That didn't work."}
+          </h1>
+        </div>
 
-          {status === 'processing' && (
-            <p className="text-sm text-center text-muted-foreground">
-              Please wait while we connect your account...
+        <div className="flex items-start gap-3 border-l-2 border-border-strong pl-4">
+          {status === 'processing' && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />}
+          {status === 'success' && <CheckCircle className="mt-0.5 size-4 shrink-0 text-success" />}
+          {status === 'error' && <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />}
+          <div className="space-y-1 text-sm">
+            <p>{message}</p>
+            <p className="text-xs text-muted-foreground">
+              {status === 'processing' && 'Hang tight while we link your account and import your contributions.'}
+              {status === 'success' && 'Taking you to your portfolio.'}
+              {status === 'error' && 'Taking you back to your portfolio. You can try again from there.'}
             </p>
-          )}
-
-          {status === 'success' && (
-            <p className="text-sm text-center text-muted-foreground">
-              Redirecting to your profile...
-            </p>
-          )}
-
-          {status === 'error' && (
-            <p className="text-sm text-center text-muted-foreground">
-              Redirecting back to profile...
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }

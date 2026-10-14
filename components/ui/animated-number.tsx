@@ -14,7 +14,7 @@ interface AnimatedNumberProps {
 
 export function AnimatedNumber({
   value,
-  duration = 2000,
+  duration = 900,
   decimals = 0,
   prefix = "",
   suffix = "",
@@ -39,7 +39,7 @@ export function AnimatedNumber({
   }
 
   return (
-    <span className={`${className} animate-count-up`}>
+    <span className={`${className} tabular-nums`}>
       {prefix}{formatValue(animatedValue)}{suffix}
     </span>
   )

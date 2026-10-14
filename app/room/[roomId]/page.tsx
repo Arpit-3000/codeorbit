@@ -2,36 +2,59 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  Loader2, 
-  Users, 
-  Video, 
-  Mic, 
-  MicOff, 
-  VideoOff, 
-  Volume2, 
-  VolumeX,
+import {
   ArrowLeft,
-  Trash2,
-  Send
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+  Video,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getRoomById, closeRoom, Room, getStreamToken } from '@/lib/api';
 import { useAuth } from '@/contexts/auth-context';
 import { toast } from '@/hooks/use-toast';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { CollaborativeCanvas } from '@/components/room/collaborative-canvas';
-import { StreamChat, Channel as StreamChannel } from 'stream-chat';
+import { ChatPanel } from '@/components/room/chat-panel';
 import { VideoCall } from '@/components/room/video-call';
+import { AuthGuard } from '@/components/auth/auth-guard';
+import { PersonAvatar, personName } from '@/components/social/person';
+import { Segmented, StatusDot } from '@/components/ds/primitives';
+import { StreamChat, Channel as StreamChannel } from 'stream-chat';
+import { cn } from '@/lib/utils';
 
-export default function RoomPage() {
+type Connection = 'connecting' | 'connected' | 'reconnecting';
+type MobileTab = 'board' | 'chat' | 'call';
+
+const CONNECTION_COPY: Record<Connection, { tone: 'primary' | 'success' | 'warning'; label: string }> = {
+  connecting: { tone: 'primary', label: 'Connecting' },
+  connected: { tone: 'success', label: 'Connected' },
+  reconnecting: { tone: 'warning', label: 'Reconnecting' },
+};
+
+function RoomView() {
   const params = useParams();
   const router = useRouter();
   const roomId = params.roomId as string;
   const { user } = useAuth();
+  const desktop = useMediaQuery('(min-width: 1024px)');
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,26 +63,38 @@ export default function RoomPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [isTyping, setIsTyping] = useState<string | null>(null);
-  
-  // Call states
+  const [connection, setConnection] = useState<Connection>('connecting');
+
+  // Call state
   const [streamToken, setStreamToken] = useState<string | null>(null);
   const [streamApiKey, setStreamApiKey] = useState<string | null>(null);
   const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+
+  // Workspace layout state
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [videoOpen, setVideoOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('board');
+  const [fullscreen, setFullscreen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     loadRoom();
   }, [roomId]);
 
-  // ✅ Handle page unload/refresh - cleanup resources
+  useEffect(() => {
+    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  // Handle page unload/refresh: cleanup resources
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Cleanup when page closes/refreshes
       if (channel) {
-        console.log('[CLEANUP] Page unload - stopping channel watch');
         channel.stopWatching().catch(console.error);
       }
-      
-      // Optional: Show warning if in active call
       if (isVideoCallActive) {
         e.preventDefault();
         e.returnValue = 'You are in an active call. Are you sure you want to leave?';
@@ -68,10 +103,7 @@ export default function RoomPage() {
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [channel, isVideoCallActive]);
 
   useEffect(() => {
@@ -89,7 +121,6 @@ export default function RoomPage() {
         channel.off('typing.start');
         channel.off('typing.stop');
         channel.off('room_closed');
-        // Stop watching the channel
         channel.stopWatching().catch(console.error);
       }
     };
@@ -100,7 +131,6 @@ export default function RoomPage() {
       setLoading(true);
       const data = await getRoomById(roomId);
       setRoom(data.room);
-      console.log('[ROOM] Room loaded:', data.room);
     } catch (error: any) {
       console.error('[ROOM] Failed to load room:', error);
       toast({
@@ -116,41 +146,24 @@ export default function RoomPage() {
 
   const initializeStreamChat = async () => {
     try {
-      console.log('[STREAM] Initializing Stream Chat...');
-      console.log('[STREAM] Current user:', user!.id, user!.displayName);
-      console.log('[STREAM] Room participants:', room!.participants.map(p => ({ id: p._id, name: p.displayName || p.username })));
-      
+      setConnection('connecting');
       // Get Stream token from backend
       const streamData = await getStreamToken();
-      console.log('[STREAM] Token received, API Key:', streamData.apiKey);
 
       // Store token and API key for video/voice calls
       setStreamToken(streamData.token);
       setStreamApiKey(streamData.apiKey);
 
-      // Initialize Stream Chat client
       const client = StreamChat.getInstance(streamData.apiKey);
-      
-      // Connect current user (only with id field - backend handles user creation)
-      await client.connectUser(
-        {
-          id: user!.id,
-          // DO NOT add other fields - backend creates user with full data
-        },
-        streamData.token
-      );
 
-      console.log('[STREAM] Current user connected successfully');
+      // Connect current user (only with id field: backend handles user creation)
+      await client.connectUser({ id: user!.id }, streamData.token);
       setChatClient(client);
 
-      // Get or create channel with participant IDs
-      // Backend should have already created these users
+      // Get or create channel with participant IDs (backend has already created these users)
       const memberIds = room!.participants.map(p => p._id);
-      console.log('[STREAM] Channel members:', memberIds);
-
       const channelId = room!.streamChannelId || `room-${room!.roomId}`;
-      console.log('[STREAM] Creating/getting channel:', channelId);
-      
+
       const streamChannel = client.channel('messaging', channelId, {
         name: 'Collaboration Room',
         members: memberIds,
@@ -158,133 +171,81 @@ export default function RoomPage() {
 
       try {
         await streamChannel.watch();
-        console.log('[STREAM] ✅ Channel connected successfully');
       } catch (channelError: any) {
-        console.error('[STREAM] ❌ Channel watch failed:', channelError);
-        
-        // Check if it's a permission error
+        console.error('[STREAM] Channel watch failed:', channelError);
+
+        // Permission error: the backend didn't register these users on the channel
         if (channelError.message?.includes('not allowed') || channelError.message?.includes('ReadChannel')) {
           toast({
-            title: '⚠️ Backend Configuration Error',
-            description: 'Stream users not properly configured. Please contact the backend team to fix user permissions.',
+            title: 'Backend configuration error',
+            description: 'Stream users are not configured correctly. Returning you to Collab Space.',
             variant: 'destructive',
           });
-          
-          // Show detailed error for debugging
-          console.error('[STREAM] Permission Error Details:');
-          console.error('- User ID:', user!.id);
-          console.error('- Channel ID:', channelId);
-          console.error('- Members:', memberIds);
-          console.error('- Error:', channelError.message);
-          console.error('');
-          console.error('🔴 BACKEND FIX REQUIRED:');
-          console.error('   Backend must call streamClient.upsertUsers() for both users');
-          console.error('   Backend must add both users as channel members');
-          console.error('   See ROOM_PERMISSION_FIX.md for complete fix');
-          
-          // Redirect back after a delay
-          setTimeout(() => {
-            router.push('/social');
-          }, 5000);
-          
+          console.error('[STREAM] BACKEND FIX REQUIRED: upsert both users in Stream and add both as channel members.', {
+            user: user!.id,
+            channelId,
+            memberIds,
+          });
+          setTimeout(() => router.push('/social'), 5000);
           return;
         }
-        
+
         throw channelError;
       }
-      
+
       setChannel(streamChannel);
+      setConnection('connected');
 
       // Load existing messages first
-      const state = await streamChannel.query({
-        messages: { limit: 50 },
-      });
-      console.log('[CHAT] Loaded existing messages:', state.messages?.length || 0);
+      const state = await streamChannel.query({ messages: { limit: 50 } });
       setMessages(state.messages || []);
 
-      // ✅ Listen for NEW messages only (after loading existing ones)
+      // Listen for NEW messages only (after loading existing ones)
       streamChannel.on('message.new', (event) => {
-        console.log('[CHAT] New message received:', event.message);
-        // Only add if not already in the list (prevent duplicates)
         setMessages((prev) => {
-          const exists = prev.some(msg => msg.id === event.message.id);
-          if (exists) {
-            console.log('[CHAT] Message already exists, skipping duplicate');
-            return prev;
-          }
-          console.log('[CHAT] Adding new message to chat');
+          if (prev.some(msg => msg.id === event.message.id)) return prev;
           return [...prev, event.message];
         });
       });
 
-      // ✅ Listen for typing indicators
       streamChannel.on('typing.start', (event) => {
-        console.log('[CHAT] User started typing:', event.user?.id);
-        if (event.user?.id !== user!.id) {
-          const typingUser = event.user?.name || 'Someone';
-          console.log('[CHAT] Showing typing indicator for:', typingUser);
-          setIsTyping(typingUser);
-        }
+        if (event.user?.id !== user!.id) setIsTyping(event.user?.name || 'Someone');
       });
 
       streamChannel.on('typing.stop', (event) => {
-        console.log('[CHAT] User stopped typing:', event.user?.id);
-        if (event.user?.id !== user!.id) {
-          console.log('[CHAT] Hiding typing indicator');
-          setIsTyping(null);
-        }
+        if (event.user?.id !== user!.id) setIsTyping(null);
       });
 
-      // ✅ CRITICAL: Listen for room closed event (both users)
-      streamChannel.on('room_closed', (event) => {
-        console.log('[ROOM CLOSED] Event received:', event);
-        console.log('[ROOM CLOSED] Data:', event.data);
-        console.log('[ROOM CLOSED] Closed by:', event.data?.closedBy);
-        
+      // Room closed by any participant
+      streamChannel.on('room_closed' as any, (event: any) => {
         const wasClosedByMe = event.data?.closedBy === user!.id;
-        
+
         toast({
-          title: 'Room Closed',
-          description: wasClosedByMe 
-            ? 'You closed the collaboration room' 
+          title: 'Room closed',
+          description: wasClosedByMe
+            ? 'You closed the collaboration room'
             : 'The collaboration room has been closed by another participant',
         });
 
-        console.log('[ROOM CLOSED] Starting cleanup in 1.5s...');
-        
         // Cleanup and redirect after showing notification
         setTimeout(() => {
           cleanupAndRedirect();
         }, 1500);
       });
 
-      // Handle connection state changes
+      // Connection state changes
       client.on('connection.changed', (event) => {
-        console.log('[STREAM] Connection state:', event);
         if (event.online === false) {
-          console.log('[STREAM] ⚠️ Connection lost');
-          toast({
-            title: 'Connection Lost',
-            description: 'Trying to reconnect...',
-            variant: 'destructive',
-          });
+          setConnection('reconnecting');
         } else if (event.online === true) {
-          console.log('[STREAM] ✅ Connection restored');
-          toast({
-            title: 'Connection Restored',
-            description: 'You are back online',
-          });
+          setConnection('connected');
+          toast({ title: 'Back online', description: 'Your connection to the room was restored.' });
         }
-      });
-
-      toast({
-        title: 'Chat Connected',
-        description: 'Real-time chat is ready!',
       });
     } catch (error: any) {
       console.error('[STREAM] Failed to initialize:', error);
       toast({
-        title: 'Chat Error',
+        title: 'Chat error',
         description: 'Failed to connect to chat. Some features may not work.',
         variant: 'destructive',
       });
@@ -292,26 +253,14 @@ export default function RoomPage() {
   };
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !channel) {
-      console.log('[CHAT] Cannot send: empty message or no channel');
-      return;
-    }
+    if (!messageInput.trim() || !channel) return;
 
     try {
-      console.log('[CHAT] Sending message:', messageInput.substring(0, 50) + '...');
-      
-      await channel.sendMessage({
-        text: messageInput,
-      });
-      
-      console.log('[CHAT] ✅ Message sent successfully');
+      await channel.sendMessage({ text: messageInput });
       setMessageInput('');
-      
-      // Stop typing indicator
       await channel.stopTyping();
-      console.log('[CHAT] Typing indicator stopped');
     } catch (error) {
-      console.error('[CHAT] ❌ Failed to send message:', error);
+      console.error('[CHAT] Failed to send message:', error);
       toast({
         title: 'Error',
         description: 'Failed to send message',
@@ -334,85 +283,43 @@ export default function RoomPage() {
 
   const cleanupAndRedirect = async () => {
     try {
-      console.log('[CLEANUP] Starting cleanup...');
-      
-      // 1. Stop video call if active
+      // 1. Stop video call if active (VideoCall handles its own cleanup)
       if (isVideoCallActive) {
-        console.log('[CLEANUP] Stopping video call...');
         setIsVideoCallActive(false);
-        // VideoCall component will handle its own cleanup
       }
-      
-      // 2. Stop typing if active
+
+      // 2. Stop typing and leave the channel
       if (channel) {
         try {
-          console.log('[CLEANUP] Stopping typing indicator...');
           await channel.stopTyping();
         } catch (err) {
           console.log('[CLEANUP] Could not stop typing:', err);
         }
-        
-        // 3. Stop watching channel (leave room)
         try {
-          console.log('[CLEANUP] Leaving channel...');
           await channel.stopWatching();
         } catch (err) {
           console.log('[CLEANUP] Could not leave channel:', err);
         }
       }
 
-      // 4. Disconnect from Stream Chat (not recommended if other pages use it)
-      // Skip this - let the StreamProvider handle global connection
-      // if (chatClient) {
-      //   try {
-      //     await chatClient.disconnectUser();
-      //     console.log('[CLEANUP] ✅ Disconnected from Stream');
-      //   } catch (err) {
-      //     console.log('[CLEANUP] Could not disconnect:', err);
-      //   }
-      // }
-
-      // 5. Clear local states
-      console.log('[CLEANUP] Clearing states...');
+      // Don't disconnect from Stream here: StreamProvider owns the global connection.
       setChannel(null);
       setMessages([]);
       setIsVideoCallActive(false);
 
-      console.log('[CLEANUP] ✅ Cleanup complete');
-      
-      // 6. Redirect to social page
-      console.log('[CLEANUP] Redirecting to /social...');
       router.push('/social');
     } catch (error) {
       console.error('[CLEANUP] Cleanup error:', error);
-      // Force redirect even if cleanup fails
       router.push('/social');
     }
   };
 
   const handleCloseRoom = async () => {
     if (!room) return;
-
-    // Show confirmation dialog
-    const confirmed = window.confirm(
-      'Are you sure you want to close this room? This will end the session for all participants.'
-    );
-    
-    if (!confirmed) return;
-
     try {
-      console.log('[CLOSE] Closing room:', room.roomId);
-      
-      // Call backend to close room
-      // Backend will send room_closed event to ALL participants
+      setClosing(true);
+      // Backend sends room_closed to ALL participants (including this one), which triggers cleanup + redirect.
       await closeRoom(room.roomId);
-      
-      console.log('[CLOSE] ✅ Room close request sent to backend');
-      console.log('[CLOSE] Waiting for room_closed event from backend...');
-      
-      // The room_closed event listener will handle cleanup and redirect
-      // Backend sends the event to ALL participants including the one who closed it
-      
     } catch (error: any) {
       console.error('[CLOSE] Failed to close room:', error);
       toast({
@@ -420,304 +327,259 @@ export default function RoomPage() {
         description: error.response?.data?.message || 'Failed to close room',
         variant: 'destructive',
       });
+      setClosing(false);
+      setConfirmClose(false);
     }
   };
 
   const handleStartVideoCall = () => {
     if (!streamToken || !streamApiKey) {
       toast({
-        title: 'Error',
-        description: 'Stream not initialized. Please wait...',
+        title: 'Not ready yet',
+        description: 'The call service is still initialising. Try again in a moment.',
         variant: 'destructive',
       });
       return;
     }
+    setVideoOpen(true);
     setIsVideoCallActive(true);
-    toast({
-      title: 'Video Call Started',
-      description: 'Starting video call...',
-    });
   };
 
   const handleEndCall = () => {
     setIsVideoCallActive(false);
-    toast({
-      title: 'Call Ended',
-      description: 'You have left the call',
-    });
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div role="status" className="flex min-h-dvh flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+        <Loader2 className="size-5 animate-spin text-primary" />
+        Joining the room…
       </div>
     );
   }
 
-  if (!room) {
+  if (!room || !user) {
     return null;
   }
 
-  return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-          {/* Header - Fixed */}
-          <div className="border-b bg-card shadow-sm z-10 flex-shrink-0">
-            <div className="container mx-auto px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => router.push('/social')}
-                    className="hover:bg-primary/10"
-                  >
-                    <ArrowLeft className="h-5 w-5" />
-                  </Button>
-                  <div className="flex items-center gap-3">
-                    <div className="flex -space-x-2">
-                      {room.participants.map((participant) => (
-                        <Avatar
-                          key={participant._id}
-                          className="h-9 w-9 border-2 border-background ring-2 ring-primary/10"
-                        >
-                          <AvatarImage src={participant.photoURL || participant.profileImage} />
-                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                            {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      ))}
-                    </div>
-                    <div>
-                      <h1 className="text-lg font-semibold flex items-center gap-2">
-                        Collaboration Room
-                        <Badge variant="outline" className="text-green-500 border-green-500">
-                          Active
-                        </Badge>
-                      </h1>
-                      <p className="text-sm text-muted-foreground">
-                        {room.participants.map(p => p.displayName || p.username).join(' • ')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  onClick={handleCloseRoom}
-                  className="shadow-sm"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Close Room
-                </Button>
-              </div>
-            </div>
+  const conn = CONNECTION_COPY[connection];
+
+  /* ------------------------------ panels ------------------------------ */
+
+  const board = <CollaborativeCanvas roomId={room.roomId} />;
+
+  const videoPanel = (
+    <section aria-label="Video call" className="shrink-0 border-b border-border">
+      <div className="flex h-10 items-center justify-between px-3">
+        <h2 className="t-eyebrow flex items-center gap-2">
+          <StatusDot tone={isVideoCallActive ? 'success' : 'neutral'} live={isVideoCallActive} />
+          Call
+        </h2>
+        <Button size="icon-sm" variant="ghost" onClick={() => setVideoOpen((o) => !o)} aria-expanded={videoOpen} aria-label={videoOpen ? 'Minimise call panel' : 'Expand call panel'}>
+          {videoOpen ? <ChevronUp /> : <ChevronDown />}
+        </Button>
+      </div>
+      {videoOpen &&
+        (isVideoCallActive && streamToken && streamApiKey ? (
+          <VideoCall
+            apiKey={streamApiKey}
+            token={streamToken}
+            userId={user.id}
+            userName={user.displayName || user.email}
+            userImage={user.photoURL || undefined}
+            callId={`video-${room.roomId}`}
+            participants={room.participants}
+            onCallEnd={handleEndCall}
+          />
+        ) : (
+          <div className="space-y-4 px-3 pb-4">
+            <Button className="w-full" onClick={handleStartVideoCall} disabled={!streamToken || !streamApiKey}>
+              {!streamToken ? <Loader2 className="animate-spin" /> : <Video />}
+              {!streamToken ? 'Preparing call…' : 'Start video call'}
+            </Button>
+            <ul className="space-y-2">
+              {room.participants.map((p) => (
+                <li key={p._id} className="flex items-center gap-2.5">
+                  <PersonAvatar person={p} size="sm" online={p.onlineStatus} />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {personName(p)}
+                    {p._id === user.id && <span className="ml-1.5 text-xs text-faint">you</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
+        ))}
+    </section>
+  );
 
-          {/* Main Content - Fixed Height with Internal Scroll */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left Sidebar - Chat (Scrollable) */}
-            <div className="w-80 border-r bg-card flex flex-col">
-              {/* Chat Header - Fixed */}
-              <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
-                <h2 className="font-semibold flex items-center gap-2">
-                  <Send className="h-4 w-4 text-primary" />
-                  Chat
-                </h2>
-              </div>
-              
-              {/* Messages - Scrollable Only This Section */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-                {!channel ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
-                      <p className="text-sm text-muted-foreground">Connecting to chat...</p>
-                    </div>
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="text-center text-muted-foreground text-sm py-8">
-                    <div className="mb-3 flex justify-center">
-                      <div className="p-4 rounded-full bg-primary/10">
-                        <Send className="h-6 w-6 text-primary" />
-                      </div>
-                    </div>
-                    <p className="font-medium">No messages yet</p>
-                    <p className="text-xs mt-1">Start the conversation!</p>
-                  </div>
-                ) : (
-                  <>
-                    {messages.map((msg) => (
-                      <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
-                        <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-primary/10">
-                          <AvatarImage src={msg.user?.image} />
-                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs">
-                            {msg.user?.name?.[0]?.toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <p className="text-sm font-medium">{msg.user?.name || 'User'}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(msg.created_at).toLocaleTimeString([], { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                              })}
-                            </p>
-                          </div>
-                          <div className="mt-1 bg-muted/50 rounded-lg px-3 py-2 text-sm break-words">
-                            {msg.text}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {isTyping && (
-                      <div className="flex gap-3 opacity-70">
-                        <Avatar className="h-8 w-8 flex-shrink-0">
-                          <AvatarFallback className="text-xs bg-muted">
-                            {isTyping[0].toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{isTyping}</p>
-                          <div className="flex gap-1 mt-1">
-                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+  const chatPanel = (
+    <section aria-label="Chat" className={cn('flex min-h-0 flex-col', chatOpen ? 'flex-1' : 'shrink-0')}>
+      <div className="flex h-10 shrink-0 items-center justify-between px-3">
+        <h2 className="t-eyebrow">
+          Chat {messages.length > 0 && <span className="t-num ml-1 text-faint">{messages.length}</span>}
+        </h2>
+        <Button size="icon-sm" variant="ghost" onClick={() => setChatOpen((o) => !o)} aria-expanded={chatOpen} aria-label={chatOpen ? 'Minimise chat' : 'Expand chat'}>
+          {chatOpen ? <ChevronDown /> : <ChevronUp />}
+        </Button>
+      </div>
+      {chatOpen && (
+        <ChatPanel
+          messages={messages}
+          ready={!!channel}
+          typingUser={isTyping}
+          input={messageInput}
+          onInput={handleTyping}
+          onSend={handleSendMessage}
+          currentUserId={user.id}
+        />
+      )}
+    </section>
+  );
 
-              {/* Message Input - Fixed at Bottom */}
-              <div className="border-t p-4 bg-muted/20 flex-shrink-0">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Type a message..."
-                    value={messageInput}
-                    onChange={(e) => handleTyping(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                    disabled={!channel}
-                    className="flex-1 bg-background"
-                  />
-                  <Button 
-                    onClick={handleSendMessage} 
-                    disabled={!channel || !messageInput.trim()}
-                    size="icon"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-                {!channel && (
-                  <p className="text-xs text-muted-foreground mt-2">Connecting to chat...</p>
-                )}
-              </div>
-            </div>
+  const sidebar = (
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      {videoPanel}
+      {chatPanel}
+    </div>
+  );
 
-            {/* Center - Canvas (Fixed, No Scroll) */}
-            <div className="flex-1 flex flex-col bg-gradient-to-br from-muted/20 to-muted/40 p-6 overflow-hidden">
-              <div className="h-full">
-                <CollaborativeCanvas roomId={room.roomId} />
-              </div>
-            </div>
+  /* ------------------------------- shell ------------------------------ */
 
-            {/* Right Sidebar - Video Call (Scrollable if needed) */}
-            <div className="w-80 border-l bg-card flex flex-col overflow-y-auto">
-              {/* Video Header - Fixed */}
-              <div className="border-b px-4 py-3 bg-muted/30 flex-shrink-0">
-                <h2 className="font-semibold flex items-center gap-2">
-                  <Video className="h-4 w-4 text-primary" />
-                  Video Call
-                </h2>
-              </div>
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 sm:px-4">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/social')} aria-label="Back to Collab Space">
+              <ArrowLeft />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back to Collab Space</TooltipContent>
+        </Tooltip>
 
-              <div className="p-4 space-y-4">
-                {/* Video Call Section */}
-                {isVideoCallActive && streamToken && streamApiKey ? (
-                  <div className="space-y-4">
-                    <VideoCall
-                      apiKey={streamApiKey}
-                      token={streamToken}
-                      userId={user!.id}
-                      userName={user!.displayName || user!.email}
-                      userImage={user!.photoURL}
-                      callId={`video-${room.roomId}`}
-                      participants={room.participants}
-                      onCallEnd={handleEndCall}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    {/* Call Button */}
-                    <div className="space-y-2">
-                      <Button 
-                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-12 shadow-lg"
-                        onClick={handleStartVideoCall}
-                        disabled={!streamToken || !streamApiKey}
-                      >
-                        <Video className="h-5 w-5 mr-2" />
-                        Start Video Call
-                      </Button>
-                      <p className="text-xs text-muted-foreground text-center">
-                        Video call includes audio and video
-                      </p>
-                    </div>
-
-                    {!streamToken && (
-                      <div className="flex items-center justify-center p-4">
-                        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
-                        <p className="text-xs text-muted-foreground">
-                          Initializing call features...
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Participants */}
-                {!isVideoCallActive && (
-                  <div className="pt-4">
-                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                      <Users className="h-4 w-4 text-primary" />
-                      Participants ({room.participants.length})
-                    </h3>
-                    <div className="space-y-3">
-                      {room.participants.map((participant) => (
-                        <div key={participant._id} className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-muted/50 to-muted/30 border border-border/50 hover:border-primary/30 transition-all">
-                          <Avatar className="h-10 w-10 ring-2 ring-primary/10">
-                            <AvatarImage src={participant.photoURL || participant.profileImage} />
-                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                              {(participant.displayName || participant.username || 'U')[0].toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {participant.displayName || participant.username}
-                            </p>
-                            {participant.onlineStatus ? (
-                              <Badge variant="outline" className="text-green-500 border-green-500 text-xs mt-1">
-                                <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
-                                Online
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-gray-500 border-gray-500 text-xs mt-1">
-                                <div className="h-1.5 w-1.5 rounded-full bg-gray-500 mr-1.5"></div>
-                                Offline
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex -space-x-1.5" aria-hidden>
+            {room.participants.slice(0, 4).map((p) => (
+              <PersonAvatar key={p._id} person={p} size="sm" className="rounded-md ring-2 ring-background" />
+            ))}
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h1 className="truncate text-sm font-medium">{room.participants.filter((p) => p._id !== user.id).map(personName).join(', ') || 'Your room'}</h1>
+            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground" role="status">
+              <StatusDot tone={conn.tone} live={connection !== 'connected'} />
+              {conn.label}
+            </p>
           </div>
         </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          {desktop && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen((o) => !o)} aria-pressed={!sidebarOpen} aria-label={sidebarOpen ? 'Focus on the board' : 'Show chat and call'}>
+                    {sidebarOpen ? <PanelRightClose /> : <PanelRightOpen />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{sidebarOpen ? 'Focus on the board' : 'Show chat and call'}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" onClick={toggleFullscreen} aria-pressed={fullscreen} aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+                    {fullscreen ? <Minimize2 /> : <Maximize2 />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{fullscreen ? 'Exit fullscreen' : 'Fullscreen'}</TooltipContent>
+              </Tooltip>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setConfirmClose(true)} className="ml-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive">
+            <LogOut /> <span className="hidden sm:inline">End room</span>
+          </Button>
+        </div>
+      </header>
+
+      {connection === 'reconnecting' && (
+        <p role="alert" className="shrink-0 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-center text-xs">
+          Connection lost. Your strokes and messages will sync once you're back.
+        </p>
+      )}
+
+      {desktop ? (
+        <div className="min-h-0 flex-1">
+          <ResizablePanelGroup direction="horizontal" autoSaveId="codeorbit.room.layout">
+            <ResizablePanel id="board" order={1} defaultSize={68} minSize={40}>
+              <div className="h-full bg-surface-sunken/40">{board}</div>
+            </ResizablePanel>
+            {sidebarOpen && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel id="side" order={2} defaultSize={32} minSize={22} maxSize={46}>
+                  {sidebar}
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
+        </div>
+      ) : (
+        <>
+          <div className="shrink-0 border-b border-border px-3 py-2">
+            <Segmented
+              label="Room view"
+              value={mobileTab}
+              onChange={setMobileTab}
+              options={[
+                { value: 'board', label: 'Board' },
+                { value: 'chat', label: `Chat${messages.length ? ` · ${messages.length}` : ''}` },
+                { value: 'call', label: isVideoCallActive ? 'Call · live' : 'Call' },
+              ]}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {mobileTab === 'board' && <div className="h-full bg-surface-sunken/40">{board}</div>}
+            {mobileTab === 'chat' && <div className="flex h-full flex-col bg-card">{chatPanel}</div>}
+            {mobileTab === 'call' && <div className="bg-card">{videoPanel}</div>}
+          </div>
+        </>
+      )}
+
+      <AlertDialog open={confirmClose} onOpenChange={(o) => !closing && setConfirmClose(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End this room for everyone?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The session closes for all participants and chat and call end. The board is kept, but nobody can rejoin this room.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closing}>Stay</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleCloseRoom();
+              }}
+              disabled={closing}
+            >
+              {closing && <Loader2 className="animate-spin" />}
+              {closing ? 'Ending…' : 'End room'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+export default function RoomPage() {
+  return (
+    <AuthGuard>
+      <RoomView />
+    </AuthGuard>
   );
 }

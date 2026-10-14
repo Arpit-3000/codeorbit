@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Bell } from 'lucide-react';
+import Link from 'next/link';
+import { Bell, UserPlus, UserCheck, Users, Radio, MessageSquare, BellRing, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Popover,
   PopoverContent,
@@ -11,13 +11,24 @@ import {
 } from '@/components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getNotifications, markNotificationAsRead, Notification } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
-import Link from 'next/link';
+import { timeAgo } from '@/components/ds/primitives';
+import { cn } from '@/lib/utils';
+
+export const NOTIFICATION_ICON: Record<string, LucideIcon> = {
+  friend_request: UserPlus,
+  request_accepted: UserCheck,
+  follow: Users,
+  ping_request: Radio,
+  ping_accepted: Radio,
+  message: MessageSquare,
+};
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     loadNotifications();
@@ -31,127 +42,103 @@ export function NotificationBell() {
       const data = await getNotifications(10, 0);
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
+      setFailed(false);
     } catch (error) {
       console.error('Failed to load notifications:', error);
+      setFailed(true);
+    } finally {
+      setLoaded(true);
     }
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Close popover first for better UX
     setOpen(false);
-    
-    // Mark as read in background (don't block UI)
+
     if (!notification.read) {
       try {
         await markNotificationAsRead(notification._id);
-        // Update local state immediately for better UX
-        setNotifications(prev => 
+        setNotifications(prev =>
           prev.map(n => n._id === notification._id ? { ...n, read: true } : n)
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
       } catch (error: any) {
-        console.error('Failed to mark as read:', error);
-        // Don't show error to user, just log it
         // The notification will still be marked as read on next load
+        console.error('Failed to mark as read:', error);
       }
-    }
-  };
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'friend_request':
-        return '👥';
-      case 'request_accepted':
-        return '✅';
-      case 'follow':
-        return '👤';
-      case 'ping_request':
-        return '📍';
-      case 'ping_accepted':
-        return '🎉';
-      case 'message':
-        return '💬';
-      default:
-        return '🔔';
     }
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        >
+          <Bell />
           {unreadCount > 0 && (
-            <Badge
-              variant="destructive"
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-            >
+            <span className="t-num absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
               {unreadCount > 9 ? '9+' : unreadCount}
-            </Badge>
+            </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold">Notifications</h3>
-          <Link href="/social?tab=notifications">
-            <Button variant="ghost" size="sm">
-              View All
-            </Button>
+      <PopoverContent className="w-[22rem] max-w-[calc(100vw-1.5rem)] p-0" align="end">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-baseline gap-2">
+            <h3 className="t-title text-sm">Notifications</h3>
+            {unreadCount > 0 && <span className="t-num text-xs text-primary">{unreadCount} new</span>}
+          </div>
+          <Link href="/social?tab=notifications" onClick={() => setOpen(false)} className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+            View all
           </Link>
         </div>
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-[26rem] overflow-y-auto">
           {notifications.length > 0 ? (
             notifications.map((notification) => {
               // Skip notifications with null sender (data integrity issue)
-              if (!notification.sender) {
-                console.warn('Notification with null sender:', notification._id);
-                return null;
-              }
-              
+              if (!notification.sender) return null;
+              const Icon = NOTIFICATION_ICON[notification.type] ?? BellRing;
+
               return (
                 <button
                   key={notification._id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`w-full p-3 hover:bg-accent transition-colors text-left border-b last:border-b-0 ${
-                    !notification.read ? 'bg-primary/5' : ''
-                  }`}
+                  className={cn(
+                    'relative flex w-full gap-3 border-b px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-accent/60',
+                    !notification.read && 'bg-primary-soft/60'
+                  )}
                 >
-                  <div className="flex gap-3">
-                    <div className="text-xl">{getNotificationIcon(notification.type)}</div>
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage
-                        src={notification.sender.photoURL || notification.sender.profileImage}
-                      />
-                      <AvatarFallback>
-                        {(
-                          notification.sender.displayName ||
-                          notification.sender.username ||
-                          'U'
-                        )[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{notification.title}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDistanceToNow(new Date(notification.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </p>
-                    </div>
-                    {!notification.read && (
-                      <div className="h-2 w-2 rounded-full bg-primary mt-2" />
-                    )}
+                  {!notification.read && <span className="absolute left-0 top-0 h-full w-0.5 bg-primary" aria-hidden />}
+                  <Avatar className="size-8 rounded-md after:rounded-md">
+                    <AvatarImage className="rounded-md" src={notification.sender.photoURL || notification.sender.profileImage} />
+                    <AvatarFallback className="rounded-md text-xs">
+                      {(notification.sender.displayName || notification.sender.username || 'U')[0].toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1.5 text-[13px] font-medium">
+                      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{notification.title}</span>
+                    </p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{notification.message}</p>
+                    <p className="t-eyebrow mt-1.5 normal-case tracking-normal">{timeAgo(notification.createdAt)}</p>
                   </div>
                 </button>
               );
             })
           ) : (
-            <div className="p-8 text-center text-muted-foreground">
-              No notifications
+            <div className="px-6 py-10 text-center">
+              <p className="text-sm font-medium">
+                {failed ? "Couldn't reach notifications" : loaded ? "You're all caught up" : 'Checking for updates…'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {failed
+                  ? 'We will keep retrying every 30 seconds.'
+                  : 'Friend requests, pings and room invites will show up here.'}
+              </p>
             </div>
           )}
         </div>

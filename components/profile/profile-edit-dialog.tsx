@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Github, Linkedin, Globe, Twitter } from 'lucide-react';
+import { Loader2, Camera, Trash2 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { updateUserProfile } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
@@ -18,8 +19,36 @@ interface ProfileEditDialogProps {
   onProfileUpdated: (profile: any) => void;
 }
 
+/** Crop to a centred square and shrink to 256px, so the stored photo stays small (about 20 KB). */
+async function preparePhoto(file: File): Promise<string> {
+  if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) throw new Error('Choose a PNG, JPEG or WebP image.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('That image is over 10 MB. Choose a smaller one.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("That image couldn't be read."));
+      i.src = url;
+    });
+    const side = Math.min(img.width, img.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 256, 256);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdated }: ProfileEditDialogProps) {
   const [loading, setLoading] = useState(false);
+  // undefined: unchanged, a data URL: new photo, null: remove it
+  const [photo, setPhoto] = useState<string | null | undefined>(undefined);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     displayName: '',
     username: '',
@@ -35,6 +64,7 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
 
   useEffect(() => {
     if (profile) {
+      setPhoto(undefined);
       setFormData({
         displayName: profile.displayName || '',
         username: profile.username || '',
@@ -75,7 +105,7 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
 
     try {
       setLoading(true);
-      const updatedProfile = await updateUserProfile(formData);
+      const updatedProfile = await updateUserProfile((photo === undefined ? formData : { ...formData, photo }) as any);
       
       toast({
         title: 'Profile Updated',
@@ -90,6 +120,7 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
         bio: formData.bio,
         accountType: formData.accountType,
         socialLinks: formData.socialLinks,
+        photoURL: updatedProfile.user?.photoURL ?? (photo === undefined ? profile?.photoURL : photo),
       });
     } catch (error: any) {
       console.error('Failed to update profile:', error);
@@ -105,15 +136,56 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] gap-6 overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Profile</DialogTitle>
+          <DialogTitle className="t-display text-3xl">Edit profile</DialogTitle>
           <DialogDescription>
-            Update your profile information. Email cannot be changed.
+            Update your photo, name and bio.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Profile photo */}
+          <div className="flex items-center gap-5">
+            <Avatar className="size-20 rounded-full">
+              <AvatarImage src={(photo === undefined ? profile?.photoURL : photo) || ''} alt="" className="object-cover" />
+              <AvatarFallback className="bg-primary-soft text-xl font-semibold text-primary">
+                {(formData.displayName || formData.username || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+                  <Camera /> {(photo === undefined ? profile?.photoURL : photo) ? 'Change photo' : 'Upload photo'}
+                </Button>
+                {(photo === undefined ? profile?.photoURL : photo) && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setPhoto(null)}>
+                    <Trash2 /> Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Shown on your portfolio, your achievement card and across CodeOrbit. PNG, JPEG or WebP.</p>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                aria-label="Upload a profile photo"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  try {
+                    setPhoto(await preparePhoto(file));
+                  } catch (err: any) {
+                    toast({ title: "Couldn't use that photo", description: err.message, variant: 'destructive' });
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2">
           {/* Display Name */}
           <div className="space-y-2">
             <Label htmlFor="displayName">Display Name</Label>
@@ -143,6 +215,7 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
             <p className="text-xs text-muted-foreground">
               Only letters, numbers, and underscores allowed
             </p>
+          </div>
           </div>
 
           {/* Bio */}
@@ -181,76 +254,6 @@ export function ProfileEditDialog({ open, onOpenChange, profile, onProfileUpdate
                 ? 'Anyone can follow you instantly' 
                 : 'Follow requests require your approval'}
             </p>
-          </div>
-
-          {/* Social Links */}
-          <div className="space-y-4">
-            <Label>Social Links</Label>
-            
-            <div className="space-y-3">
-              {/* GitHub */}
-              <div className="flex items-center gap-2">
-                <Github className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={formData.socialLinks.github}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    socialLinks: { ...formData.socialLinks, github: e.target.value }
-                  })}
-                  placeholder="https://github.com/username"
-                />
-              </div>
-
-              {/* LinkedIn */}
-              <div className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={formData.socialLinks.linkedin}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    socialLinks: { ...formData.socialLinks, linkedin: e.target.value }
-                  })}
-                  placeholder="https://linkedin.com/in/username"
-                />
-              </div>
-
-              {/* Portfolio */}
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={formData.socialLinks.portfolio}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    socialLinks: { ...formData.socialLinks, portfolio: e.target.value }
-                  })}
-                  placeholder="https://yourportfolio.com"
-                />
-              </div>
-
-              {/* Twitter */}
-              <div className="flex items-center gap-2">
-                <Twitter className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={formData.socialLinks.twitter}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    socialLinks: { ...formData.socialLinks, twitter: e.target.value }
-                  })}
-                  placeholder="https://twitter.com/username"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Email (Read-only) */}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email (Cannot be changed)</Label>
-            <Input
-              id="email"
-              value={profile?.email || ''}
-              disabled
-              className="bg-muted"
-            />
           </div>
 
           {/* Actions */}

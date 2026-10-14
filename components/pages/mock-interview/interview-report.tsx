@@ -1,266 +1,209 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowUpRight, Printer, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { 
-  Trophy, 
-  TrendingUp, 
-  TrendingDown, 
-  Target, 
-  BookOpen, 
-  Code,
-  RotateCcw,
-  Download,
-  CheckCircle,
-  XCircle,
-} from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface InterviewReportProps {
   report: any
   onRestart: () => void
 }
 
+type Verdict = { label: string; tone: string; note: string }
+
+const VERDICTS: Record<string, Verdict> = {
+  "Strong Hire": { label: "Strong hire", tone: "border-success text-success", note: "Clear, well-supported answers throughout." },
+  Hire: { label: "Hire", tone: "border-info text-info", note: "Solid performance with a few gaps." },
+  Maybe: { label: "Borderline", tone: "border-warning text-warning", note: "Mixed signals. Could go either way." },
+  "No Hire": { label: "Not yet", tone: "border-destructive text-destructive", note: "Significant gaps for this level." },
+}
+
+function Gauge({ label, value, hint }: { label: string; value: number; hint?: string }) {
+  const pct = Math.max(0, Math.min(100, (value / 10) * 100))
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm">{label}</p>
+        <p className="t-num text-lg">{value.toFixed(1)}</p>
+      </div>
+      <div className="relative h-1.5 rounded-sm bg-surface-sunken" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10} aria-valuenow={value}>
+        <div className="animate-draw-bar h-full rounded-sm bg-primary" style={{ width: `${pct}%` }} />
+        {[25, 50, 75].map((t) => (
+          <span key={t} className="absolute top-0 h-full w-px bg-background" style={{ left: `${t}%` }} aria-hidden />
+        ))}
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+function List({ title, items, tone }: { title: string; items?: string[]; tone: "good" | "bad" | "neutral" }) {
+  if (!items || items.length === 0) return null
+  return (
+    <section className="space-y-4">
+      <h2 className="t-eyebrow">{title}</h2>
+      <ul className="space-y-3">
+        {items.map((s, i) => (
+          <li
+            key={i}
+            className={cn(
+              "border-l-2 pl-4 text-sm leading-relaxed",
+              tone === "good" ? "border-success" : tone === "bad" ? "border-destructive/70" : "border-border-strong"
+            )}
+          >
+            {s}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export function InterviewReport({ report, onRestart }: InterviewReportProps) {
-  const getScoreColor = (score: number) => {
-    if (score >= 8) return "text-green-600"
-    if (score >= 6) return "text-yellow-600"
-    return "text-red-600"
-  }
-
-  const getRecommendationBadge = (recommendation: string) => {
-    const config = {
-      "Strong Hire": { variant: "default" as const, icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200" },
-      "Hire": { variant: "secondary" as const, icon: CheckCircle, color: "bg-blue-100 text-blue-800 border-blue-200" },
-      "Maybe": { variant: "outline" as const, icon: Target, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-      "No Hire": { variant: "destructive" as const, icon: XCircle, color: "bg-red-100 text-red-800 border-red-200" },
-    }
-    return config[recommendation as keyof typeof config] || config["Maybe"]
-  }
-
-  const recommendation = getRecommendationBadge(report.hiring_recommendation)
-  const RecommendationIcon = recommendation.icon
+  const verdict = VERDICTS[report.hiring_recommendation] ?? VERDICTS.Maybe
+  const date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+  const num = (v: any) => (typeof v === "number" ? v : Number(v) || 0)
 
   return (
-    <div className="container mx-auto max-w-6xl p-6 space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-4">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
-          <Trophy className="w-8 h-8 text-primary" />
+    <article className="mx-auto max-w-4xl space-y-16 px-6 py-14 sm:px-10 print:py-0">
+      {/* Masthead */}
+      <header className="space-y-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="t-eyebrow">Interview assessment · {date}</p>
+          <div className="flex gap-2 print:hidden">
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer /> Save as PDF
+            </Button>
+            <Button size="sm" onClick={onRestart}>
+              <RotateCcw /> New interview
+            </Button>
+          </div>
         </div>
-        <h1 className="text-4xl font-bold">Interview Complete!</h1>
-        <p className="text-lg text-muted-foreground">
-          Here's your comprehensive performance report
+
+        <div className="grid gap-x-16 gap-y-10 md:grid-cols-[auto_1fr] md:items-end">
+          <div className="space-y-2">
+            <p className="t-eyebrow">Overall</p>
+            <p className="flex items-baseline gap-2">
+              <span className="t-num text-[6.5rem] font-medium leading-[0.85] tracking-[-0.05em]">{num(report.overall_score).toFixed(1)}</span>
+              <span className="t-num text-2xl text-muted-foreground">/10</span>
+            </p>
+          </div>
+          <div className="space-y-5">
+            <div className={cn("inline-flex items-baseline gap-3 border-l-2 pl-4", verdict.tone)}>
+              <span className="text-xl font-medium">{verdict.label}</span>
+              <span className="text-sm text-muted-foreground">{verdict.note}</span>
+            </div>
+            <dl className="t-num flex flex-wrap gap-x-8 gap-y-2 text-sm text-muted-foreground">
+              <div>
+                <dt className="sr-only">Duration</dt>
+                <dd><span className="text-foreground">{report.duration_minutes}</span> min</dd>
+              </div>
+              <div>
+                <dt className="sr-only">Questions</dt>
+                <dd><span className="text-foreground">{report.questions_answered}</span> questions answered</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </header>
+
+      {/* Performance */}
+      <section className="grid gap-x-16 gap-y-8 border-t border-border pt-10 md:grid-cols-3" aria-label="Performance breakdown">
+        <Gauge label="Technical" value={num(report.technical_score)} />
+        <Gauge label="Communication" value={num(report.communication_score)} />
+        <Gauge label="Confidence" value={num(report.confidence_score)} />
+        <p className="text-xs leading-relaxed text-faint md:col-span-3">
+          Communication and confidence are estimated from the quality of your answers overall, not measured from your voice or delivery.
         </p>
-      </div>
+      </section>
 
-      {/* Overall Score */}
-      <Card className="border-2">
-        <CardHeader>
-          <CardTitle className="text-center">Overall Performance</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-center gap-8">
-            <div className="text-center">
-              <div className={`text-6xl font-bold ${getScoreColor(report.overall_score)}`}>
-                {report.overall_score.toFixed(1)}
-              </div>
-              <p className="text-sm text-muted-foreground mt-2">Overall Score</p>
-            </div>
-            
-            <div className="h-24 w-px bg-border" />
-            
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm w-32">Technical:</span>
-                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${(report.technical_score / 10) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold w-12 text-right">
-                  {report.technical_score.toFixed(1)}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <span className="text-sm w-32">Communication:</span>
-                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${(report.communication_score / 10) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold w-12 text-right">
-                  {report.communication_score.toFixed(1)}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <span className="text-sm w-32">Confidence:</span>
-                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${(report.confidence_score / 10) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold w-12 text-right">
-                  {report.confidence_score.toFixed(1)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center gap-3 pt-4 border-t">
-            <RecommendationIcon className="w-5 h-5" />
-            <span className="text-lg font-semibold">Hiring Recommendation:</span>
-            <Badge className={recommendation.color}>
-              {report.hiring_recommendation}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Strengths */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              Strengths
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {report.strengths.map((strength: string, index: number) => (
-                <li key={index} className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                  <span className="text-sm">{strength}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {/* Weaknesses */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingDown className="w-5 h-5 text-red-600" />
-              Areas for Improvement
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {report.weaknesses.map((weakness: string, index: number) => (
-                <li key={index} className="flex items-start gap-2">
-                  <Target className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                  <span className="text-sm">{weakness}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Topics to Improve */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5" />
-            Topics to Study
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {report.topics_to_improve.map((topic: string, index: number) => (
-              <Badge key={index} variant="outline">
-                {topic}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recommended LeetCode Problems */}
-      {report.recommended_leetcode_problems && report.recommended_leetcode_problems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Code className="w-5 h-5" />
-              Recommended Practice Problems
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 gap-3">
-              {report.recommended_leetcode_problems.map((problem: string, index: number) => (
-                <div 
-                  key={index}
-                  className="p-3 border rounded-lg hover:bg-accent transition-colors"
-                >
-                  <p className="text-sm font-medium">{problem}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Narrative */}
+      {report.detailed_feedback && (
+        <section className="grid gap-x-16 gap-y-4 border-t border-border pt-10 md:grid-cols-[10rem_1fr]">
+          <h2 className="t-eyebrow">Assessment</h2>
+          <p className="max-w-2xl whitespace-pre-wrap text-[17px] leading-[1.7]">{report.detailed_feedback}</p>
+        </section>
       )}
 
-      {/* Detailed Feedback */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Detailed Feedback</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-            {report.detailed_feedback}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-primary">
-              {report.duration_minutes}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Minutes</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-primary">
-              {report.questions_answered}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Questions</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-primary">
-              {report.overall_score.toFixed(1)}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">Avg Score</p>
-          </CardContent>
-        </Card>
+      {/* Strengths vs weaknesses */}
+      <div className="grid gap-x-16 gap-y-12 border-t border-border pt-10 md:grid-cols-2">
+        <List title="What went well" items={report.strengths} tone="good" />
+        <List title="Where to improve" items={report.weaknesses} tone="bad" />
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-4 justify-center pt-4">
+      {/* Concepts you missed */}
+      {report.missed_concepts?.length > 0 && (
+        <section className="grid gap-x-16 gap-y-4 border-t border-border pt-10 md:grid-cols-[10rem_1fr]">
+          <h2 className="t-eyebrow">Concepts you missed</h2>
+          <ul className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+            {report.missed_concepts.map((c: string, i: number) => (
+              <li key={i} className="border-b border-border pb-3 text-sm leading-relaxed">
+                {c}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* What to do next */}
+      <section className="space-y-10 border-t border-border pt-10" aria-label="Next steps">
+        <h2 className="t-title text-xl">Next steps</h2>
+        <div className="grid gap-x-16 gap-y-10 md:grid-cols-2">
+          {(report.topics_to_improve?.length > 0 || report.recommended_topics?.length > 0) && (
+            <div className="space-y-4">
+              <p className="t-eyebrow">Topics to study</p>
+              <ul className="flex flex-wrap gap-x-3 gap-y-2">
+                {[...new Set([...(report.topics_to_improve ?? []), ...(report.recommended_topics ?? [])])].map((t: string) => (
+                  <li key={t} className="font-mono text-[13px] text-muted-foreground before:mr-0.5 before:text-faint before:content-['#']">
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {report.recommended_leetcode_problems?.length > 0 && (
+            <div className="space-y-4">
+              <p className="t-eyebrow">Practise these</p>
+              <ul className="divide-y divide-border border-y border-border">
+                {report.recommended_leetcode_problems.map((p: string, i: number) => (
+                  <li key={i}>
+                    <a
+                      href={`https://leetcode.com/problemset/?search=${encodeURIComponent(p)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center justify-between gap-3 py-2.5 text-sm hover:text-primary"
+                    >
+                      {p}
+                      <ArrowUpRight className="size-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100 print:hidden" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {report.recommended_resources?.length > 0 && (
+            <div className="space-y-4 md:col-span-2">
+              <p className="t-eyebrow">Read and watch</p>
+              <ul className="divide-y divide-border border-y border-border">
+                {report.recommended_resources.map((r: string, i: number) => (
+                  <li key={i} className="py-2.5 text-sm">
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <footer className="flex flex-wrap items-center gap-3 border-t border-border pt-8 print:hidden">
         <Button size="lg" onClick={onRestart}>
-          <RotateCcw className="w-5 h-5 mr-2" />
-          Start New Interview
+          <RotateCcw /> Run another interview
         </Button>
-        
-        <Button size="lg" variant="outline" onClick={() => window.print()}>
-          <Download className="w-5 h-5 mr-2" />
-          Download Report
-        </Button>
-      </div>
-    </div>
+        <p className="text-xs text-muted-foreground">Interviews aren't saved. Save this page as a PDF if you want to keep it.</p>
+      </footer>
+    </article>
   )
 }

@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { Bell, Check, Trash2, Loader2, CheckCheck } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Check, Trash2, Loader2, CheckCheck, BellRing } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   getNotifications,
   markNotificationAsRead,
@@ -14,225 +12,102 @@ import {
   Notification,
 } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
+import { EmptyState, ErrorState, timeAgo } from '@/components/ds/primitives';
+import { cn } from '@/lib/utils';
+import { PersonAvatar } from './person';
+import { NOTIFICATION_ICON } from './notification-bell';
 
 export function NotificationsSection() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
-      setLoading(true);
+      setFailed(false);
       const data = await getNotifications();
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
     } catch (error) {
       console.error('Failed to load notifications:', error);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleMarkAsRead = async (notificationId: string) => {
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  const run = async (id: string, fn: () => Promise<unknown>, errorText: string, okText?: string) => {
     try {
-      setActionLoading(notificationId);
-      await markNotificationAsRead(notificationId);
-      loadNotifications();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to mark as read',
-        variant: 'destructive',
-      });
+      setActionLoading(id);
+      await fn();
+      if (okText) toast({ title: okText });
+      await loadNotifications();
+    } catch {
+      toast({ title: 'Error', description: errorText, variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
   };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      setActionLoading('all');
-      await markAllNotificationsAsRead();
-      toast({
-        title: 'Success',
-        description: 'All notifications marked as read',
-      });
-      loadNotifications();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to mark all as read',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDelete = async (notificationId: string) => {
-    try {
-      setActionLoading(notificationId);
-      await deleteNotification(notificationId);
-      loadNotifications();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete notification',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'friend_request':
-        return '👥';
-      case 'request_accepted':
-        return '✅';
-      case 'follow':
-        return '👤';
-      case 'ping_request':
-        return '📍';
-      case 'ping_accepted':
-        return '🎉';
-      case 'message':
-        return '💬';
-      default:
-        return '🔔';
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Notifications
-              {unreadCount > 0 && (
-                <Badge variant="destructive">{unreadCount}</Badge>
-              )}
-            </CardTitle>
-            <CardDescription>Stay updated with your activity</CardDescription>
-          </div>
-          {unreadCount > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleMarkAllAsRead}
-              disabled={actionLoading === 'all'}
-            >
-              {actionLoading === 'all' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <CheckCheck className="h-4 w-4 mr-2" />
-                  Mark all as read
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {notifications.length > 0 ? (
-          <div className="space-y-3">
-            {notifications.map((notification) => {
-              // Skip notifications with null sender (data integrity issue)
-              if (!notification.sender) {
-                console.warn('Notification with null sender:', notification._id);
-                return null;
-              }
-              
-              return (
-                <Card
-                  key={notification._id}
-                  className={notification.read ? 'opacity-60' : 'border-primary/50'}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="text-2xl">{getNotificationIcon(notification.type)}</div>
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={notification.sender.photoURL || notification.sender.profileImage}
-                        />
-                        <AvatarFallback>
-                          {(
-                            notification.sender.displayName ||
-                            notification.sender.username ||
-                            'U'
-                          )[0].toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-sm">{notification.title}</p>
-                          {!notification.read && (
-                            <Badge variant="default" className="text-xs">New</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {notification.message}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {formatDistanceToNow(new Date(notification.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        {!notification.read && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleMarkAsRead(notification._id)}
-                            disabled={actionLoading === notification._id}
-                          >
-                            {actionLoading === notification._id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Check className="h-4 w-4" />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(notification._id)}
-                          disabled={actionLoading === notification._id}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            No notifications yet
-          </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="t-eyebrow">
+          Activity {unreadCount > 0 && <span className="t-num ml-1 text-primary">{unreadCount} new</span>}
+        </p>
+        {unreadCount > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => run('all', markAllNotificationsAsRead, 'Failed to mark all as read', 'All caught up')} disabled={actionLoading === 'all'}>
+            {actionLoading === 'all' ? <Loader2 className="animate-spin" /> : <CheckCheck />} Mark all read
+          </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+      ) : failed ? (
+        <ErrorState compact title="Couldn't load activity" onRetry={loadNotifications} />
+      ) : notifications.length > 0 ? (
+        <ul>
+          {notifications.map((n) => {
+            // Skip notifications with null sender (data integrity issue)
+            if (!n.sender) return null;
+            const Icon = NOTIFICATION_ICON[n.type] ?? BellRing;
+            const busy = actionLoading === n._id;
+            return (
+              <li key={n._id} className={cn('group relative flex items-start gap-3 border-b border-border py-3 last:border-b-0', n.read && 'opacity-60')}>
+                {!n.read && <span className="absolute -left-3 top-3 bottom-3 w-0.5 bg-primary" aria-hidden />}
+                <PersonAvatar person={n.sender} size="md" />
+                <div className="min-w-0 flex-1 leading-snug">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium">
+                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{n.title}</span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{n.message}</p>
+                  <p className="t-num mt-1 text-[11px] text-faint">{timeAgo(n.createdAt)}</p>
+                </div>
+                <div className="flex shrink-0 gap-0.5 opacity-60 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  {!n.read && (
+                    <Button size="icon-sm" variant="ghost" onClick={() => run(n._id, () => markNotificationAsRead(n._id), 'Failed to mark as read')} disabled={busy} aria-label="Mark as read">
+                      {busy ? <Loader2 className="animate-spin" /> : <Check />}
+                    </Button>
+                  )}
+                  <Button size="icon-sm" variant="ghost" onClick={() => run(n._id, () => deleteNotification(n._id), 'Failed to delete notification')} disabled={busy} aria-label="Delete notification">
+                    <Trash2 />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyState compact title="Nothing yet" description="Requests, accepted invites and room events will be listed here." />
+      )}
+    </div>
   );
 }

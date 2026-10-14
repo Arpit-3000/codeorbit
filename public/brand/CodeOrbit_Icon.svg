@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 48 160 104" fill="none" stroke-width="16">
+  <style>
+    .a { stroke: #1c1a16 } .b { stroke: #c2410c }
+    @media (prefers-color-scheme: dark) { .a { stroke: #f3f1ec } .b { stroke: #f5ae3d } }
+  </style>
+  <g transform="translate(100,100)">
+    <rect class="a" x="-35" y="-35" width="70" height="70" rx="18" transform="translate(-28,0) rotate(45)"/>
+    <rect class="b" x="-35" y="-35" width="70" height="70" rx="18" transform="translate(28,0) rotate(45)"/>
+  </g>
+</svg>

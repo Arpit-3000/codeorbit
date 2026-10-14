@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getFreshToken } from "@/lib/token";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -11,16 +12,12 @@ const api = axios.create({
   },
 });
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
 
-  if (typeof window !== "undefined") {
+  const token = await getFreshToken();
 
-    const token = localStorage.getItem("token");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   return config;
