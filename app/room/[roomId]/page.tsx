@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -234,12 +234,49 @@ function RoomView() {
   }, [isVideoCallActive, sync.status]);
 
   const othersInCall = sync.callUsers.filter((u) => u.id !== user?.id);
+  const presentIds = useMemo(() => (sync.presence ? new Set(sync.presence.map((u) => u.id)) : null), [sync.presence]);
+
+  // Tell me when someone joins or leaves the room or the call. A short grace period on "left" means a quick
+  // reconnect or page refresh doesn't announce a departure that didn't really happen.
+  const watch = (people: Array<{ id: string; name: string }> | null, noun: 'room' | 'call', ready: boolean) => {
+    const seen = useRef<Map<string, string> | null>(null);
+    const pending = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+    useEffect(() => {
+      if (!people || !ready) return; // not enough information to say anyone left
+      const now = new Map(people.filter((u) => u.id !== user?.id).map((u) => [u.id, u.name]));
+      const before = seen.current;
+      seen.current = now;
+      if (!before) return; // first snapshot: nothing "happened"
+      now.forEach((name, id) => {
+        const t = pending.current.get(id);
+        if (t) {
+          clearTimeout(t); // came straight back
+          pending.current.delete(id);
+        } else if (!before.has(id)) {
+          toast({ title: `${name} ${noun === 'room' ? 'joined the room' : 'joined the call'}` });
+        }
+      });
+      before.forEach((name, id) => {
+        if (now.has(id) || pending.current.has(id)) return;
+        pending.current.set(
+          id,
+          setTimeout(() => {
+            pending.current.delete(id);
+            toast({ title: `${name} left the ${noun}`, description: noun === 'room' ? 'They were removed from the room view.' : undefined });
+          }, 4000)
+        );
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [people, ready]);
+    useEffect(() => () => pending.current.forEach(clearTimeout), []);
+  };
+  watch(sync.presence, 'room', sync.status === 'live');
+  watch(sync.callUsers, 'call', sync.status === 'live');
+
+  // A call someone else started: make the Call panel visible so they can join
   const announced = useRef(0);
   useEffect(() => {
-    if (!isVideoCallActive && othersInCall.length > announced.current) {
-      toast({ title: 'Video call started', description: `${othersInCall.map((u) => u.name).join(', ')} is in the call. Join from the Call panel.` });
-      setVideoOpen(true);
-    }
+    if (!isVideoCallActive && othersInCall.length > announced.current) setVideoOpen(true);
     announced.current = othersInCall.length;
   }, [othersInCall.length, isVideoCallActive]);
 
@@ -402,6 +439,7 @@ function RoomView() {
             userName={user.displayName || user.email}
             userImage={user.photoURL || undefined}
             callId={`video-${room.roomId}`}
+            presentIds={presentIds}
             participants={room.participants}
             onCallEnd={handleEndCall}
           />
@@ -420,7 +458,7 @@ function RoomView() {
             <ul className="space-y-2">
               {room.participants.map((p) => (
                 <li key={p._id} className="flex items-center gap-2.5">
-                  <PersonAvatar person={p} size="sm" online={p.onlineStatus} />
+                  <PersonAvatar person={p} size="sm" online={presentIds ? presentIds.has(p._id) : undefined} />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {personName(p)}
                     {p._id === user.id && <span className="ml-1.5 text-xs text-faint">you</span>}
@@ -489,6 +527,14 @@ function RoomView() {
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground" role="status">
               <StatusDot tone={conn.tone} live={connection !== 'connected'} />
               {conn.label}
+              {presentIds &&
+                room.participants
+                  .filter((p) => p._id !== user.id && !presentIds.has(p._id))
+                  .map((p) => (
+                    <span key={p._id} className="text-warning">
+                      · {personName(p)} isn’t in the room
+                    </span>
+                  ))}
             </p>
           </div>
         </div>

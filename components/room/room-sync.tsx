@@ -23,6 +23,7 @@ export interface JoinAck {
   userId: string;
   name: string;
   callUsers: CallUser[];
+  presenceUsers: CallUser[];
 }
 
 interface RoomSyncValue {
@@ -32,6 +33,8 @@ interface RoomSyncValue {
   joinedRef: MutableRefObject<boolean>;
   me: { id: string; name: string } | null;
   callUsers: CallUser[];
+  /** Who has the room open right now; null until the first snapshot arrives. */
+  presence: CallUser[] | null;
   /** Emit with an ack, resolving `{ ok: false }` when offline or after 8s instead of hanging. */
   send: (event: string, payload?: any) => Promise<any>;
   /** Run `cb` after every successful join (immediately if already joined). Returns an unsubscribe. */
@@ -51,6 +54,7 @@ export function RoomSyncProvider({ roomId, children }: { roomId: string; childre
   const [status, setStatus] = useState<SyncStatus>('connecting');
   const [me, setMe] = useState<{ id: string; name: string } | null>(null);
   const [callUsers, setCallUsers] = useState<CallUser[]>([]);
+  const [presence, setPresence] = useState<CallUser[] | null>(null);
   const joinedRef = useRef(false);
   const lastAck = useRef<JoinAck | null>(null);
   const listeners = useRef<Set<(ack: JoinAck) => void>>(new Set());
@@ -85,6 +89,7 @@ export function RoomSyncProvider({ roomId, children }: { roomId: string; childre
         lastAck.current = ack;
         setMe({ id: ack.userId, name: ack.name });
         setCallUsers(ack.callUsers || []);
+        setPresence(ack.presenceUsers || []);
         setStatus('live');
         listeners.current.forEach((cb) => cb(ack));
       });
@@ -93,13 +98,17 @@ export function RoomSyncProvider({ roomId, children }: { roomId: string; childre
     s.on('connect', join);
     s.on('disconnect', () => {
       joinedRef.current = false;
-      if (alive) setStatus('offline');
+      if (alive) {
+        setStatus('offline');
+        setPresence(null); // we can't vouch for anyone while our own link is down
+      }
     });
     s.on('connect_error', (err) => {
       joinedRef.current = false;
       if (alive) setStatus(err.message === 'unauthorized' ? 'denied' : 'offline');
     });
     s.on('call:state', ({ users }: { users: CallUser[] }) => alive && setCallUsers(users));
+    s.on('presence:state', ({ users }: { users: CallUser[] }) => alive && setPresence(users));
     setSocket(s);
 
     return () => {
@@ -143,6 +152,6 @@ export function RoomSyncProvider({ roomId, children }: { roomId: string; childre
     };
   }, []);
 
-  const value = useMemo(() => ({ socket, status, joinedRef, me, callUsers, send, onJoined }), [socket, status, me, callUsers, send, onJoined]);
+  const value = useMemo(() => ({ socket, status, joinedRef, me, callUsers, presence, send, onJoined }), [socket, status, me, callUsers, presence, send, onJoined]);
   return <RoomSyncContext.Provider value={value}>{children}</RoomSyncContext.Provider>;
 }
