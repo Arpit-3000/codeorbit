@@ -32,6 +32,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { toast } from '@/hooks/use-toast';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { CollaborativeCanvas } from '@/components/room/collaborative-canvas';
+import { RoomSyncProvider, useRoomSync } from '@/components/room/room-sync';
 import { ChatPanel } from '@/components/room/chat-panel';
 import { VideoCall } from '@/components/room/video-call';
 import { AuthGuard } from '@/components/auth/auth-guard';
@@ -74,6 +75,7 @@ function RoomView() {
   const [videoOpen, setVideoOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('board');
+  const sync = useRoomSync();
   const [fullscreen, setFullscreen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -127,7 +129,7 @@ function RoomView() {
         setStreamApiKey(streamData.apiKey);
 
         // StreamProvider already connects this same singleton; connecting again with the same user is a no-op.
-        const client = StreamChat.getInstance(streamData.apiKey);
+        const client = StreamChat.getInstance(streamData.apiKey, { timeout: 20000 });
         await client.connectUser({ id: userKey }, streamData.token);
         if (cancelled) return;
 
@@ -171,7 +173,16 @@ function RoomView() {
         ];
 
         try {
-          await channel.watch({ messages: { limit: 50 } });
+          // Transient timeouts happen on slow networks; retry a couple of times before giving up
+          for (let attempt = 1; ; attempt++) {
+            try {
+              await channel.watch({ messages: { limit: 50 } });
+              break;
+            } catch (e: any) {
+              if (attempt >= 3 || cancelled || !/timeout|network|ECONN/i.test(String(e?.message))) throw e;
+              await new Promise((r) => setTimeout(r, 1000 * attempt));
+            }
+          }
         } catch (channelError: any) {
           console.error('[STREAM] Channel watch failed:', channelError);
           if (cancelled) return;
@@ -215,6 +226,22 @@ function RoomView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomKey, userKey]);
+
+  // Tell the room when we're in / out of the video call, so the other person can be invited to join it.
+  useEffect(() => {
+    sync.send(isVideoCallActive ? 'call:join' : 'call:leave');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideoCallActive, sync.status]);
+
+  const othersInCall = sync.callUsers.filter((u) => u.id !== user?.id);
+  const announced = useRef(0);
+  useEffect(() => {
+    if (!isVideoCallActive && othersInCall.length > announced.current) {
+      toast({ title: 'Video call started', description: `${othersInCall.map((u) => u.name).join(', ')} is in the call. Join from the Call panel.` });
+      setVideoOpen(true);
+    }
+    announced.current = othersInCall.length;
+  }, [othersInCall.length, isVideoCallActive]);
 
   const loadRoom = async () => {
     try {
@@ -380,9 +407,15 @@ function RoomView() {
           />
         ) : (
           <div className="space-y-4 px-3 pb-4">
+            {othersInCall.length > 0 && (
+              <p role="status" className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                <StatusDot tone="success" live />
+                {othersInCall.map((u) => u.name).join(', ')} {othersInCall.length === 1 ? 'is' : 'are'} in the call
+              </p>
+            )}
             <Button className="w-full" onClick={handleStartVideoCall} disabled={!streamToken || !streamApiKey}>
               {!streamToken ? <Loader2 className="animate-spin" /> : <Video />}
-              {!streamToken ? 'Preparing call…' : 'Start video call'}
+              {!streamToken ? 'Preparing call…' : othersInCall.length > 0 ? 'Join video call' : 'Start video call'}
             </Button>
             <ul className="space-y-2">
               {room.participants.map((p) => (
@@ -559,9 +592,13 @@ function RoomView() {
 }
 
 export default function RoomPage() {
+  const params = useParams();
+  const roomId = params.roomId as string;
   return (
     <AuthGuard>
-      <RoomView />
+      <RoomSyncProvider roomId={roomId}>
+        <RoomView />
+      </RoomSyncProvider>
     </AuthGuard>
   );
 }

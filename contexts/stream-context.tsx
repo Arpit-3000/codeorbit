@@ -66,7 +66,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
         console.log('[STREAM] User ID:', userId);
 
         // Initialize Stream client
-        const streamClient = StreamChat.getInstance(apiKey);
+        const streamClient = StreamChat.getInstance(apiKey, { timeout: 20000 }); // the 3s default is too tight on slower networks
         
         // Connect user (only with minimal data - backend handles user creation)
         await streamClient.connectUser(

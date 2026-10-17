@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { Download, Eraser, Pencil, Trash2, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -16,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { StatusDot } from '@/components/ds/primitives';
-import { getFreshToken } from '@/lib/token';
+import { useRoomSync, type JoinAck } from './room-sync';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -67,7 +66,6 @@ interface LiveStroke {
 }
 
 type Tool = 'pen' | 'eraser' | 'text';
-type Status = 'connecting' | 'live' | 'offline' | 'denied';
 
 /** Logical board size. Everything is stored in these units so every client, at any panel size, agrees. */
 const BOARD_W = 800;
@@ -131,13 +129,15 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
   const [color, setColor] = useState(SWATCHES[0]);
   const [lineWidth, setLineWidth] = useState(3);
   const [itemCount, setItemCount] = useState(0);
-  const [status, setStatus] = useState<Status>('connecting');
+  const sync = useRoomSync();
+  const status = sync.status;
   const [confirmClear, setConfirmClear] = useState(false);
   const [editor, setEditor] = useState<{ id: string; x: number; y: number; size: number; color: string; text: string } | null>(null);
 
   // Everything the pointer path touches lives in refs: a pointer move must not re-render React.
-  const socketRef = useRef<Socket | null>(null);
-  const joined = useRef(false);
+  const socketRef = useRef(sync.socket);
+  socketRef.current = sync.socket;
+  const joined = sync.joinedRef;
   const me = useRef<{ id: string; name: string } | null>(null);
   const items = useRef<Item[]>([]);
   const live = useRef<Map<string, LiveStroke>>(new Map());
@@ -224,27 +224,7 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
 
   /* ----------------------------- transport ----------------------------- */
 
-  const send = useCallback(
-    (event: string, payload: any) =>
-      new Promise<any>((resolve) => {
-        const s = socketRef.current;
-        if (!s || !joined.current) return resolve({ ok: false, error: 'offline' });
-        let done = false;
-        const timer = setTimeout(() => {
-          if (!done) {
-            done = true;
-            resolve({ ok: false, error: 'timeout' });
-          }
-        }, 8000);
-        s.emit(event, payload, (ack: any) => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          resolve(ack || { ok: false, error: 'no-ack' });
-        });
-      }),
-    []
-  );
+  const send = sync.send;
 
   /** Send now if connected; otherwise (or on failure) keep it and replay after the next join. */
   const submit = useCallback(
@@ -296,30 +276,20 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
   }, []);
 
   useEffect(() => {
+    const socket = sync.socket;
+    if (!socket) return;
     let alive = true;
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const offs: Array<() => void> = [];
+    // The socket is shared with the editor and call presence, so remove only our own listeners on cleanup.
+    const on = (event: string, fn: (...args: any[]) => void) => {
+      socket.on(event, fn);
+      offs.push(() => socket.off(event, fn));
+    };
 
-    const socket = io(API_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 400,
-      reconnectionDelayMax: 3000,
-      // Evaluated on every (re)connect, so an expired Google token is renewed automatically.
-      auth: (cb) => {
-        getFreshToken().then((token) => cb({ token }));
-      },
-    });
-    socketRef.current = socket;
-
-    const join = () => {
-      socket.emit('join', { roomId }, async (ack: any) => {
+    // Runs on every successful join (first connect and each reconnect)
+    offs.push(
+      sync.onJoined(async (ack: JoinAck) => {
         if (!alive) return;
-        if (!ack?.ok) {
-          joined.current = false;
-          setStatus('denied');
-          toast({ title: 'Whiteboard unavailable', description: "You don't have access to this board.", variant: 'destructive' });
-          return;
-        }
         me.current = { id: ack.userId, name: ack.name };
 
         // The server snapshot is the truth. Keep only our not-yet-confirmed work on top of it.
@@ -327,8 +297,6 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
         items.current = [...(ack.items as Item[])].sort((a, b) => a.seq - b.seq).concat(unconfirmed);
         live.current.clear();
         locks.current = new Map((ack.locks as any[]).map((l) => [l.id, { userId: l.userId, name: l.name }]));
-        joined.current = true;
-        setStatus('live');
         syncCount();
         redraw();
 
@@ -351,21 +319,11 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
           }
           pendingTextFinal.current.delete(id);
         }
-      });
-    };
-
-    socket.on('connect', join);
-    socket.on('disconnect', () => {
-      joined.current = false;
-      if (alive) setStatus('offline');
-    });
-    socket.on('connect_error', (err) => {
-      joined.current = false;
-      if (alive) setStatus(err.message === 'unauthorized' ? 'denied' : 'offline');
-    });
+      })
+    );
 
     // A peer's stroke growing live
-    socket.on('stroke:chunk', (c: { id: string; kind: 'stroke' | 'erase'; color: string; width: number; start: boolean; pts: number[] }) => {
+    on('stroke:chunk', (c: { id: string; kind: 'stroke' | 'erase'; color: string; width: number; start: boolean; pts: number[] }) => {
       let s = live.current.get(c.id);
       const ctx2 = ctx();
       if (!s) {
@@ -384,7 +342,7 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
       if (ctx2) paintStroke(ctx2, s.kind, [...from, ...c.pts], s.color, s.width);
     });
 
-    socket.on('op:add', (item: Item) => {
+    on('op:add', (item: Item) => {
       const l = live.current.get(item.id);
       live.current.delete(item.id);
       const wasLast = insertItem(item);
@@ -396,14 +354,14 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
       syncCount();
     });
 
-    socket.on('op:update', (u: { id: string; text: string; x: number; y: number; size: number; color: string }) => {
+    on('op:update', (u: { id: string; text: string; x: number; y: number; size: number; color: string }) => {
       const it = items.current.find((i) => i.id === u.id);
       if (it && it.kind === 'text') Object.assign(it, u);
       redraw();
       syncCount();
     });
 
-    socket.on('op:remove', ({ id }: { id: string }) => {
+    on('op:remove', ({ id }: { id: string }) => {
       items.current = items.current.filter((i) => i.id !== id);
       locks.current.delete(id);
       if (editorRef.current?.id === id) closeEditor();
@@ -411,7 +369,7 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
       syncCount();
     });
 
-    socket.on('op:clear', () => {
+    on('op:clear', () => {
       items.current = [];
       live.current.clear();
       locks.current.clear();
@@ -421,15 +379,15 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
       syncCount();
     });
 
-    socket.on('lock:acquire', (l: { id: string; userId: string; name: string }) => {
+    on('lock:acquire', (l: { id: string; userId: string; name: string }) => {
       locks.current.set(l.id, { userId: l.userId, name: l.name });
       redraw();
     });
-    socket.on('lock:release', ({ id }: { id: string }) => {
+    on('lock:release', ({ id }: { id: string }) => {
       locks.current.delete(id);
       redraw();
     });
-    socket.on('lock:lost', ({ id }: { id: string }) => {
+    on('lock:lost', ({ id }: { id: string }) => {
       if (editorRef.current?.id === id) {
         closeEditor();
         toast({ title: 'Edit ended', description: 'You were idle for a while, so the text was released.' });
@@ -438,17 +396,14 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
 
     return () => {
       alive = false;
-      joined.current = false;
-      socket.removeAllListeners();
-      socket.disconnect();
-      socketRef.current = null;
+      offs.forEach((off) => off());
       items.current = [];
       live.current.clear();
       locks.current.clear();
       if (textTimer.current) clearTimeout(textTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
+  }, [sync.socket]);
 
   // Stream the in-progress stroke while the pointer is down.
   useEffect(() => {
@@ -692,7 +647,7 @@ export function CollaborativeCanvas({ roomId }: CollaborativeCanvasProps) {
   const scale = fit.w / BOARD_W;
   const isEraser = tool === 'eraser';
 
-  const statusCopy: Record<Status, { tone: 'success' | 'warning' | 'primary' | 'destructive'; label: string }> = {
+  const statusCopy: Record<'connecting' | 'live' | 'offline' | 'denied', { tone: 'success' | 'warning' | 'primary' | 'destructive'; label: string }> = {
     live: { tone: 'success', label: 'Live' },
     connecting: { tone: 'primary', label: 'Connecting' },
     offline: { tone: 'warning', label: 'Offline' },
