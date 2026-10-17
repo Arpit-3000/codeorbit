@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getNotifications, markNotificationAsRead, Notification } from '@/lib/api';
 import { timeAgo } from '@/components/ds/primitives';
 import { cn } from '@/lib/utils';
+import { onCollab } from '@/lib/collab-events';
 
 export const NOTIFICATION_ICON: Record<string, LucideIcon> = {
   friend_request: UserPlus,
@@ -34,7 +35,11 @@ export function NotificationBell() {
     loadNotifications();
     // Poll for new notifications every 30 seconds
     const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
+    const off = onCollab('notifications-changed', loadNotifications);
+    return () => {
+      clearInterval(interval);
+      off();
+    };
   }, []);
 
   const loadNotifications = async () => {

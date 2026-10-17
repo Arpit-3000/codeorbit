@@ -5,6 +5,7 @@ import { StreamChat, Channel, Event } from 'stream-chat';
 import { useAuth } from './auth-context';
 import { toast } from '@/hooks/use-toast';
 import { getFreshToken } from '@/lib/token';
+import { emitCollab } from '@/lib/collab-events';
 
 interface StreamContextType {
   client: StreamChat | null;
@@ -32,6 +33,12 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
       console.log('[STREAM] No token found in localStorage');
       return;
     }
+
+    // The effect re-runs when `user` changes identity; without cleanup every run stacked another set of
+    // listeners on the same (cached) channel, duplicating toasts and events.
+    let cancelled = false;
+    let activeChannel: Channel | null = null;
+    const EVENT_TYPES = ['friend_request_received', 'request_accepted', 'ping_request', 'ping_accepted', 'ping_rejected', 'user_online', 'user_offline'];
 
     const initStream = async () => {
       try {
@@ -78,11 +85,15 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
         // Setup notification channel
         const notifChannel = streamClient.channel('messaging', `notifications-${userId}`);
         await notifChannel.watch();
+        if (cancelled) return;
+        activeChannel = notifChannel;
+        EVENT_TYPES.forEach((t) => notifChannel.off(t as any));
         console.log('[STREAM] ✅ Notification channel setup');
 
         // Listen for friend requests
         notifChannel.on('friend_request_received', (event: Event) => {
-          console.log('[STREAM] Friend request received:', event);
+          emitCollab('friends-changed');
+          emitCollab('notifications-changed');
           const data = event.data as any;
           toast({
             title: '👥 Friend Request',
@@ -92,7 +103,8 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
 
         // Listen for friend request accepted
         notifChannel.on('request_accepted', (event: Event) => {
-          console.log('[STREAM] Friend request accepted:', event);
+          emitCollab('friends-changed');
+          emitCollab('notifications-changed');
           toast({
             title: '✅ Request Accepted',
             description: 'Your friend request was accepted!',
@@ -104,32 +116,29 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
           console.log('[STREAM] Ping request received:', event);
           // the server nests the sender's details under `pingRequest`
           const data = ((event.data as any)?.pingRequest ?? event.data ?? {}) as any;
+          emitCollab('pings-changed');
           toast({
             title: '📍 Ping Request',
             description: `${data.displayName || data.username || 'A friend'} wants to collaborate!`,
           });
         });
 
-        // ✅ CRITICAL: Listen for ping accepted (User A - sender side)
+        // Ping accepted (sender side): the room now exists, so tell Collab Space to show it right away.
         notifChannel.on('ping_accepted', (event: Event) => {
-          console.log('[PING ACCEPTED] Event received:', event.data);
           const data = event.data as any;
-          
+          emitCollab('rooms-changed', { roomId: data?.roomId });
+          emitCollab('pings-changed');
+          emitCollab('notifications-changed');
           toast({
-            title: '🎉 Ping Accepted!',
-            description: 'Your collaboration request was accepted. Joining room...',
+            title: '🎉 Ping accepted',
+            description: 'Your room is ready. Join it from Rooms.',
           });
-          
-          // Navigate to room if roomId is provided
-          if (data.roomId) {
-            console.log('[PING ACCEPTED] Navigating to room:', data.roomId);
-            // Small delay to show the toast
-            setTimeout(() => {
-              window.location.href = `/room/${data.roomId}`;
-            }, 1000);
-          } else {
-            console.error('[PING ACCEPTED] No roomId in event data');
-          }
+        });
+
+        notifChannel.on('ping_rejected', () => {
+          emitCollab('pings-changed');
+          emitCollab('notifications-changed');
+          toast({ title: 'Ping declined', description: 'Your friend is not available right now.' });
         });
 
         // Listen for user online/offline
@@ -170,10 +179,9 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     initStream();
 
     return () => {
-      console.log('[STREAM] Cleaning up connection');
-      if (client) {
-        client.disconnectUser().catch(console.error);
-      }
+      cancelled = true;
+      // StreamChat is a shared singleton that the room page also uses, so keep the connection; just drop our listeners.
+      EVENT_TYPES.forEach((t) => activeChannel?.off(t as any));
     };
   }, [user]);
 

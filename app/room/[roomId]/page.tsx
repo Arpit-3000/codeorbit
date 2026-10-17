@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -58,7 +58,6 @@ function RoomView() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chatClient, setChatClient] = useState<StreamChat | null>(null);
   const [channel, setChannel] = useState<StreamChannel | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState('');
@@ -106,25 +105,116 @@ function RoomView() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [channel, isVideoCallActive]);
 
+  // One owner for the room's chat channel. The effect is keyed on stable ids (not object identity) so an
+  // auth refresh can't tear it down, and every step after an await checks `cancelled`.
+  const channelRun = useRef(0);
+  const roomKey = room?.roomId;
+  const userKey = user?.id;
   useEffect(() => {
-    if (room && user) {
-      initializeStreamChat();
-    }
+    if (!roomKey || !userKey) return;
+    const run = ++channelRun.current;
+    let cancelled = false;
+    let ch: StreamChannel | null = null;
+    let offClient: Array<{ unsubscribe: () => void }> = [];
+    let offChannel: Array<{ unsubscribe: () => void }> = [];
+
+    (async () => {
+      try {
+        setConnection('connecting');
+        const streamData = await getStreamToken();
+        if (cancelled) return;
+        setStreamToken(streamData.token);
+        setStreamApiKey(streamData.apiKey);
+
+        // StreamProvider already connects this same singleton; connecting again with the same user is a no-op.
+        const client = StreamChat.getInstance(streamData.apiKey);
+        await client.connectUser({ id: userKey }, streamData.token);
+        if (cancelled) return;
+
+        ch = client.channel('messaging', room!.streamChannelId || `room-${roomKey}`);
+        const channel = ch;
+
+        // The channel's own state is the source of truth for the transcript. It is updated before listeners run,
+        // so re-reading it can never miss, duplicate or reorder a message.
+        const sync = () => setMessages([...channel.state.messages]);
+
+        // Subscribe BEFORE watching: a message that lands while the initial load is in flight is not lost.
+        offChannel = [
+          channel.on('message.new', sync),
+          channel.on('message.updated', sync),
+          channel.on('message.deleted', sync),
+          channel.on('typing.start', (event) => {
+            if (event.user?.id !== userKey) setIsTyping(event.user?.name || 'Someone');
+          }),
+          channel.on('typing.stop', (event) => {
+            if (event.user?.id !== userKey) setIsTyping(null);
+          }),
+          channel.on('room_closed' as any, (event: any) => {
+            const wasClosedByMe = event.data?.closedBy === userKey;
+            toast({
+              title: 'Room closed',
+              description: wasClosedByMe ? 'You closed the collaboration room' : 'The collaboration room has been closed by another participant',
+            });
+            setTimeout(() => cleanupAndRedirect(), 1500);
+          }),
+        ];
+        offClient = [
+          client.on('connection.changed', (event) => {
+            if (event.online === false) setConnection('reconnecting');
+            else if (event.online === true) {
+              setConnection('connected');
+              // anything sent while we were offline is in channel state once Stream recovers
+              sync();
+            }
+          }),
+          client.on('connection.recovered', sync),
+        ];
+
+        try {
+          await channel.watch({ messages: { limit: 50 } });
+        } catch (channelError: any) {
+          console.error('[STREAM] Channel watch failed:', channelError);
+          if (cancelled) return;
+          if (channelError.message?.includes('not allowed') || channelError.message?.includes('ReadChannel')) {
+            toast({
+              title: 'Backend configuration error',
+              description: 'Stream users are not configured correctly. Returning you to Collab Space.',
+              variant: 'destructive',
+            });
+            setTimeout(() => router.push('/social'), 5000);
+            return;
+          }
+          throw channelError;
+        }
+        if (cancelled) return;
+
+        sync();
+        setChannel(channel);
+        setConnection('connected');
+      } catch (error: any) {
+        if (cancelled) return;
+        console.error('[STREAM] Failed to initialize:', error);
+        toast({
+          title: 'Chat error',
+          description: 'Failed to connect to chat. Some features may not work.',
+          variant: 'destructive',
+        });
+      }
+    })();
 
     return () => {
-      if (chatClient) {
-        chatClient.disconnectUser().catch(console.error);
-      }
-      if (channel) {
-        // Remove all event listeners to prevent memory leaks
-        channel.off('message.new');
-        channel.off('typing.start');
-        channel.off('typing.stop');
-        channel.off('room_closed');
-        channel.stopWatching().catch(console.error);
-      }
+      cancelled = true;
+      offChannel.forEach((o) => o.unsubscribe());
+      offClient.forEach((o) => o.unsubscribe());
+      const leaving = ch;
+      // React StrictMode (dev) mounts, unmounts and remounts immediately. Only stop watching if no newer run took over.
+      setTimeout(() => {
+        if (leaving && channelRun.current === run) leaving.stopWatching().catch(() => {});
+      }, 300);
+      setChannel(null);
     };
-  }, [room, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomKey, userKey]);
 
   const loadRoom = async () => {
     try {
@@ -141,114 +231,6 @@ function RoomView() {
       router.push('/social');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const initializeStreamChat = async () => {
-    try {
-      setConnection('connecting');
-      // Get Stream token from backend
-      const streamData = await getStreamToken();
-
-      // Store token and API key for video/voice calls
-      setStreamToken(streamData.token);
-      setStreamApiKey(streamData.apiKey);
-
-      const client = StreamChat.getInstance(streamData.apiKey);
-
-      // Connect current user (only with id field: backend handles user creation)
-      await client.connectUser({ id: user!.id }, streamData.token);
-      setChatClient(client);
-
-      // Get or create channel with participant IDs (backend has already created these users)
-      const memberIds = room!.participants.map(p => p._id);
-      const channelId = room!.streamChannelId || `room-${room!.roomId}`;
-
-      const streamChannel = client.channel('messaging', channelId, {
-        name: 'Collaboration Room',
-        members: memberIds,
-      });
-
-      try {
-        await streamChannel.watch();
-      } catch (channelError: any) {
-        console.error('[STREAM] Channel watch failed:', channelError);
-
-        // Permission error: the backend didn't register these users on the channel
-        if (channelError.message?.includes('not allowed') || channelError.message?.includes('ReadChannel')) {
-          toast({
-            title: 'Backend configuration error',
-            description: 'Stream users are not configured correctly. Returning you to Collab Space.',
-            variant: 'destructive',
-          });
-          console.error('[STREAM] BACKEND FIX REQUIRED: upsert both users in Stream and add both as channel members.', {
-            user: user!.id,
-            channelId,
-            memberIds,
-          });
-          setTimeout(() => router.push('/social'), 5000);
-          return;
-        }
-
-        throw channelError;
-      }
-
-      setChannel(streamChannel);
-      setConnection('connected');
-
-      // Load existing messages first
-      const state = await streamChannel.query({ messages: { limit: 50 } });
-      setMessages(state.messages || []);
-
-      // Listen for NEW messages only (after loading existing ones)
-      streamChannel.on('message.new', (event) => {
-        setMessages((prev) => {
-          if (prev.some(msg => msg.id === event.message.id)) return prev;
-          return [...prev, event.message];
-        });
-      });
-
-      streamChannel.on('typing.start', (event) => {
-        if (event.user?.id !== user!.id) setIsTyping(event.user?.name || 'Someone');
-      });
-
-      streamChannel.on('typing.stop', (event) => {
-        if (event.user?.id !== user!.id) setIsTyping(null);
-      });
-
-      // Room closed by any participant
-      streamChannel.on('room_closed' as any, (event: any) => {
-        const wasClosedByMe = event.data?.closedBy === user!.id;
-
-        toast({
-          title: 'Room closed',
-          description: wasClosedByMe
-            ? 'You closed the collaboration room'
-            : 'The collaboration room has been closed by another participant',
-        });
-
-        // Cleanup and redirect after showing notification
-        setTimeout(() => {
-          cleanupAndRedirect();
-        }, 1500);
-      });
-
-      // Connection state changes
-      client.on('connection.changed', (event) => {
-        if (event.online === false) {
-          setConnection('reconnecting');
-        } else if (event.online === true) {
-          setConnection('connected');
-          toast({ title: 'Back online', description: 'Your connection to the room was restored.' });
-        }
-      });
-    } catch (error: any) {
-      console.error('[STREAM] Failed to initialize:', error);
-      toast({
-        title: 'Chat error',
-        description: 'Failed to connect to chat. Some features may not work.',
-        variant: 'destructive',
-      });
     }
   };
 

@@ -31,6 +31,7 @@ import {
 } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { onCollab } from '@/lib/collab-events';
 import { EmptyState, ErrorState, StatusDot, formatCountdown } from '@/components/ds/primitives';
 import { PersonAvatar, PersonRow, personName } from './person';
 
@@ -71,7 +72,12 @@ export function PingRequestsSection({ onCount }: { onCount?: (n: number) => void
   useEffect(() => {
     loadData();
     const poll = setInterval(() => loadData(true), 15_000);
-    return () => clearInterval(poll);
+    // Stream tells us the instant a ping arrives or is answered; the poll is only a safety net.
+    const off = onCollab('pings-changed', () => loadData(true));
+    return () => {
+      clearInterval(poll);
+      off();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

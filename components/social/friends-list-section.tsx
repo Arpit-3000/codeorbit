@@ -15,6 +15,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { EmptyState, ErrorState, StatusDot, timeAgo } from '@/components/ds/primitives';
 import { PersonRow, personName } from './person';
+import { onCollab } from '@/lib/collab-events';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,9 +60,9 @@ export function FriendsListSection({ view, onCounts }: Props) {
   const [confirmRemove, setConfirmRemove] = useState<Friend | null>(null);
   const [pings, setPings] = useState<Record<string, PingState>>({});
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (quiet = false) => {
     try {
-      setFailed(false);
+      if (!quiet) setFailed(false);
       const [friendsData, requestsData] = await Promise.all([getFriendsList(), getFriendRequests()]);
       const f: Friend[] = friendsData.friends || [];
       const r: FriendRequest[] = requestsData.requests || [];
@@ -70,7 +71,7 @@ export function FriendsListSection({ view, onCounts }: Props) {
       onCounts?.({ friends: f.length, requests: r.length, online: f.filter((x) => x.onlineStatus).length });
     } catch (error) {
       console.error('[FRIENDS LIST] Failed to load friends data:', error);
-      setFailed(true);
+      if (!quiet) setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -78,6 +79,13 @@ export function FriendsListSection({ view, onCounts }: Props) {
 
   useEffect(() => {
     loadData();
+    // Live: Stream tells us when a request arrives or is accepted. The poll also keeps online/offline dots honest.
+    const off = onCollab('friends-changed', () => loadData(true));
+    const poll = setInterval(() => loadData(true), 20_000);
+    return () => {
+      off();
+      clearInterval(poll);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -156,7 +164,7 @@ export function FriendsListSection({ view, onCounts }: Props) {
   }
 
   if (failed) {
-    return <ErrorState title="Couldn't load your people" description="The server didn't respond. Nothing has been changed." onRetry={loadData} />;
+    return <ErrorState title="Couldn't load your people" description="The server didn't respond. Nothing has been changed." onRetry={() => loadData()} />;
   }
 
   if (view === 'requests') {

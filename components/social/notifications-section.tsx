@@ -15,6 +15,7 @@ import { toast } from '@/hooks/use-toast';
 import { EmptyState, ErrorState, timeAgo } from '@/components/ds/primitives';
 import { cn } from '@/lib/utils';
 import { PersonAvatar } from './person';
+import { onCollab } from '@/lib/collab-events';
 import { NOTIFICATION_ICON } from './notification-bell';
 
 export function NotificationsSection() {
@@ -24,15 +25,15 @@ export function NotificationsSection() {
   const [failed, setFailed] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (quiet = false) => {
     try {
-      setFailed(false);
+      if (!quiet) setFailed(false);
       const data = await getNotifications();
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
     } catch (error) {
       console.error('Failed to load notifications:', error);
-      setFailed(true);
+      if (!quiet) setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -40,6 +41,12 @@ export function NotificationsSection() {
 
   useEffect(() => {
     loadNotifications();
+    const off = onCollab('notifications-changed', () => loadNotifications(true));
+    const poll = setInterval(() => loadNotifications(true), 20_000);
+    return () => {
+      off();
+      clearInterval(poll);
+    };
   }, [loadNotifications]);
 
   const run = async (id: string, fn: () => Promise<unknown>, errorText: string, okText?: string) => {
@@ -71,7 +78,7 @@ export function NotificationsSection() {
       {loading ? (
         <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : failed ? (
-        <ErrorState compact title="Couldn't load activity" onRetry={loadNotifications} />
+        <ErrorState compact title="Couldn't load activity" onRetry={() => loadNotifications()} />
       ) : notifications.length > 0 ? (
         <ul>
           {notifications.map((n) => {

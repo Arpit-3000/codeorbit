@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, UserPlus, Loader2, Clock, UserMinus, X } from 'lucide-react';
+import { Search, UserPlus, Loader2, Clock, Check, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,7 +10,7 @@ import { toast } from '@/hooks/use-toast';
 import { EmptyState, ErrorState } from '@/components/ds/primitives';
 import { PersonRow } from './person';
 
-type FollowStatus = 'none' | 'sending' | 'pending' | 'following';
+type FollowStatus = 'none' | 'sending' | 'pending' | 'friends';
 
 /**
  * Discover people. Search runs as you type (debounced) and on Enter; same endpoint as before.
@@ -26,6 +26,7 @@ export function UserSearchSection() {
   const [suggestionsFailed, setSuggestionsFailed] = useState(false);
   const [followStatus, setFollowStatus] = useState<Map<string, FollowStatus>>(new Map());
   const seq = useRef(0);
+  const relations = new Map<string, string>([...(searchResults ?? []), ...suggestions].map((u: any) => [u._id, u.relation]));
 
   useEffect(() => {
     loadSuggestions();
@@ -76,18 +77,18 @@ export function UserSearchSection() {
 
   const handleFollowAction = async (userId: string) => {
     const currentStatus = followStatus.get(userId) || 'none';
-    if (currentStatus === 'sending') return;
+    if (currentStatus !== 'none') return;
 
     try {
-      if (currentStatus === 'none') {
-        setStatus(userId, 'sending');
-        await sendFriendRequest(userId);
+      setStatus(userId, 'sending');
+      const res = await sendFriendRequest(userId);
+      // Public profiles connect instantly; private ones wait for approval.
+      if (res?.type === 'instant') {
+        setStatus(userId, 'friends');
+        toast({ title: "You're friends now", description: 'You can ping them from your Friends list.' });
+      } else {
         setStatus(userId, 'pending');
-        toast({ title: 'Request sent', description: 'They\'ll see it in their notifications.' });
-      } else if (currentStatus === 'following') {
-        // TODO: Call unfollow API when available
-        setStatus(userId, 'none');
-        toast({ title: 'Unfollowed', description: 'You are no longer following this user.' });
+        toast({ title: 'Request sent', description: "They'll see it in their notifications." });
       }
     } catch (error: any) {
       setStatus(userId, currentStatus);
@@ -100,7 +101,9 @@ export function UserSearchSection() {
   };
 
   const followButton = (userId: string) => {
-    const status = followStatus.get(userId) || 'none';
+    // What we've done this session wins; otherwise trust what the server says about an existing relationship.
+    const rel = relations.get(userId);
+    const status = followStatus.get(userId) || (rel === 'friend' ? 'friends' : rel === 'requested' ? 'pending' : 'none');
     switch (status) {
       case 'sending':
         return (
@@ -114,10 +117,10 @@ export function UserSearchSection() {
             <Clock /> Requested
           </Button>
         );
-      case 'following':
+      case 'friends':
         return (
-          <Button size="sm" variant="outline" onClick={() => handleFollowAction(userId)}>
-            <UserMinus /> Unfollow
+          <Button size="sm" variant="ghost" disabled className="text-muted-foreground">
+            <Check /> Friends
           </Button>
         );
       default:
